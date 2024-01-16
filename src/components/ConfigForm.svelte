@@ -5,6 +5,9 @@
   export let handleSubmit: () => Promise<void>;
 
   function addAnnouncement() {
+    if (config.announcements == null) {
+      config.announcements = [];
+    }
     const newAnnouncement: Announcement = {
       prefix: '',
       as_path: [],
@@ -14,6 +17,7 @@
       roa_origin: ''
     };
     config.announcements.push(newAnnouncement);
+    config.announcements = config.announcements;
     console.log(newAnnouncement);
   }
 
@@ -26,9 +30,7 @@
   }
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-<form on:click|preventDefault={handleSubmit} class="space-y-4">
+<form class="space-y-4">
   <div>
     <label for="name" class="block text-sm font-medium leading-6 mb-2">Name</label>
     <input
@@ -64,7 +66,7 @@
   </div>
   <div>
     <label for="rounds" class="block text-sm font-medium leading-6 mb-2">Propagation Rounds</label>
-    <input
+    <!-- <input
       type="number"
       bind:value={config.propagation_rounds}
       placeholder="Propagation Rounds"
@@ -72,18 +74,20 @@
       id="rounds"
       min="1"
       max="2"
-    />
+    /> -->
+    <select
+      bind:value={config.propagation_rounds}
+      class="p-2 border border-gray-300 rounded w-full"
+    >
+      <option value={1}>1</option>
+      <option value={2}>2</option>
+    </select>
   </div>
 
   <!-- Announcements -->
   <div>
     <div class="flex justify-between mb-1">
       <label class="block text-sm font-medium leading-6 mb-2">Announcements</label>
-      <!-- <button
-        type="button"
-        on:click={addAnnouncement}
-        class="bg-emerald-500 text-white p-1 rounded-full">+</button
-      > -->
       <button
         type="button"
         on:click={addAnnouncement}
@@ -106,7 +110,7 @@
       </button>
     </div>
 
-    {#each config.announcements as announcement, index (announcement)}
+    {#each config.announcements as announcement, index}
       <hr />
       <div class="space-y-1 my-4">
         <input
@@ -140,26 +144,23 @@
           placeholder="ROA Origin"
           class="p-2 border border-gray-300 rounded w-full"
         />
-        <label class="inline-flex items-center">
-          <input
-            type="checkbox"
-            on:click|stopPropagation={() => {}}
-            bind:checked={announcement.roa_valid_length}
-            class="form-checkbox h-5 w-5 text-gray-600"
-          />
-          <span class="ml-2 text-gray-700">Is ROA Length Valid?</span>
-        </label>
+
         <div class="flex justify-between">
-          <!-- <button
-            type="button"
-            on:click={() => config.announcements.splice(index, 1)}
-            class="p-2 rounded bg-gray-100 text-red-600"
-          >
-            Delete
-          </button> -->
+          <label class="inline-flex items-center">
+            <input
+              type="checkbox"
+              on:click|stopPropagation={() => {}}
+              bind:checked={announcement.roa_valid_length}
+              class="form-checkbox h-5 w-5 text-gray-600"
+            />
+            <span class="ml-2 text-gray-700">Is ROA Length Valid?</span>
+          </label>
           <button
             type="button"
-            on:click={() => config.announcements.splice(index, 1)}
+            on:click={() => {
+              config.announcements.splice(index, 1);
+              config.announcements = config.announcements;
+            }}
             class="bg-red-500 text-white rounded-full h-8 w-8 flex items-center justify-center"
           >
             <svg

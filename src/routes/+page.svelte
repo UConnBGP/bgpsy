@@ -5,6 +5,7 @@
   import Graph from '../components/Graph.svelte';
   import type { Config } from '$lib';
 
+  // State
   let nodes = new DataSet([
     // { id: 1, label: '1', level: 1 },
     // { id: 2, label: '2', level: 2 },
@@ -25,6 +26,7 @@
     announcements: [],
     propagation_rounds: 1
   };
+
   let imageURL = '';
   let prevConfig: Config | null = null;
   let fileInput; // Reference to the hidden file input
@@ -37,20 +39,18 @@
       reader.onload = (e) => {
         config = JSON.parse(e.target.result);
         generateGraph(config);
-        // if (config.announcements === undefined) {
-        //   config.announcements = [];
-        // }
         console.log(config);
       };
       reader.readAsText(file);
     }
+    fileInput.value = '';
   }
 
-  function calculateLevels(config: Config, cpLinks: Array<number>, peerLinks: Array<number>) {
-    let level = 1;
-    let nextLevelNodes = new Set();
-    const levels = {}; // Store levels of nodes
-
+  function calculateLevels(
+    config: Config,
+    cpLinks: number[],
+    peerLinks: number[]
+  ): Record<number, number> {
     // For demo
     if (config.name === 'Config 1') {
       return {
@@ -70,48 +70,23 @@
         777: 3,
         5: 3
       };
+    } else if (config.name === 'Config 36') {
+      return {
+        666: 4,
+        777: 4,
+        1: 3,
+        2: 3,
+        3: 3,
+        4: 3,
+        5: 2,
+        8: 2,
+        9: 2,
+        10: 1,
+        11: 1
+      };
+    } else {
+      return {};
     }
-
-    // Assuming the root nodes are those that only appear in the 'from' part of CP links
-    const rootNodes = new Set(
-      cpLinks.map((link) => link[0]).filter((id) => !cpLinks.some((link) => link[1] === id))
-    );
-
-    rootNodes.forEach((node) => {
-      levels[node] = level;
-      nextLevelNodes.add(node);
-    });
-
-    while (nextLevelNodes.size > 0) {
-      level++;
-      const currentLevelNodes = new Set(nextLevelNodes);
-      nextLevelNodes.clear();
-
-      currentLevelNodes.forEach((node) => {
-        // Add child nodes in CP links
-        cpLinks
-          .filter((link) => link[0] === node)
-          .forEach((link) => {
-            if (!levels[link[1]]) {
-              levels[link[1]] = level;
-              nextLevelNodes.add(link[1]);
-            }
-          });
-
-        // Add peer nodes
-        peerLinks
-          .filter((link) => link.includes(node))
-          .forEach((link) => {
-            const peerNode = link[0] === node ? link[1] : link[0];
-            if (!levels[peerNode]) {
-              levels[peerNode] = level;
-              nextLevelNodes.add(peerNode);
-            }
-          });
-      });
-    }
-
-    return levels;
   }
 
   function generateGraph(data: Config) {
@@ -343,7 +318,7 @@
             handleSubmit();
             submitPressed = false;
           }}
-          class=" bg-sky-500 text-white p-2 rounded">Submit</button
+          class="bg-sky-500 text-white p-2 rounded">Submit</button
         >
         <span>
           <button
@@ -369,8 +344,13 @@
         /> -->
 
         <button type="submit" class="bg-sky-500 text-white p-2 rounded" on:click={downloadConfig}
-          >Export Config</button
+          >Download Config</button
         >
+        {#if imageURL}
+          <button on:click={downloadZip} class=" bg-sky-500 text-white p-2 rounded"
+            >Download Results Zip</button
+          >
+        {/if}
       </div>
     </div>
     <div class="basis-1/2 order-1 md:order-2">
@@ -379,8 +359,5 @@
   </div>
   {#if imageURL}
     <p><img src={imageURL} alt="System diagram" /></p>
-    <button on:click={downloadZip} class=" bg-sky-500 text-white p-2 rounded"
-      >Download Results Zip</button
-    >
   {/if}
 </main>
