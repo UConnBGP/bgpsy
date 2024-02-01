@@ -2,26 +2,13 @@
   import { onMount, onDestroy } from 'svelte';
   import { Network, DataSet } from 'vis-network/standalone/esm/vis-network';
   import Modal from './Modal.svelte';
+  import { getPropagationRanks } from '$lib';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
-
-  // onMount(() => {
-  //   // Nodes and edges data
-  //   const nodes = [
-  //     { id: 1, label: '1', x: 0, y: -200, fixed: true },
-  //     { id: 2, label: '2', x: 0, y: 0, fixed: true },
-  //     { id: 3, label: '3', x: 200, y: 0, fixed: true },
-  //     { id: 777, label: '777', x: -50, y: 200, fixed: true },
-  //     { id: 666, label: '666', x: 300, y: 200, fixed: true }
-  //   ];
-
-  //   const edges = [
-  //     { from: 1, to: 2 },
-  //     { from: 2, to: 3 },
-  //     { from: 2, to: 777 },
-  //     { from: 3, to: 666 }
-  //   ];
+  export let simulationResults: {} | null;
+  export let cpLinks: number[][];
+  export let peerLinks: number[][];
 
   //   // Options for the network
   //   const options = {
@@ -50,11 +37,6 @@
   //     //   }
   //   };
 
-  //   // Initialize network
-  //   const container = document.getElementById('mynetwork');
-  //   new Network(container, { nodes, edges }, options);
-  // });
-
   let container;
   let network;
   // let nodes;
@@ -68,14 +50,24 @@
   let selectedASPolicy = null;
   let selectedLink = null;
   let selectedLinkID = null;
+  let selectedASN2 = null;
+  let selectedLinkID2 = null;
   let showModal = false;
   let showAddEdgeModal = false;
+  let showConfirmAddEdgeModal = false;
   let newNodeId;
   let newEdgeFrom;
   let newEdgeTo;
   let newPeer1;
   let newPeer2;
-  let edgeType = 'consumer-producer'; // Default edge type
+  let edgeType = 'customer-provider'; // Default edge type
+  let callbackFunc;
+  let callbackData;
+  let nodeData: {} | null = null;
+  let edgeData: {} | null = null;
+  let contextMenuData = { show: false, x: 0, y: 0 };
+  let victimASN = null;
+  let newLinkType = null;
 
   onMount(() => {
     // Configuration for the network
@@ -106,12 +98,45 @@
           }
         }
       },
-      physics: false // Disable physics for hierarchical layout
+      manipulation: {
+        enabled: false,
+        addEdge: (data, callback) => {
+          if (newLinkType === 'customer-provider') {
+            // customer-provider logic
+            cpLinks = [...cpLinks, [data.from, data.to]];
+          } else if (newLinkType === 'peer') {
+            // peer-to-peer edge logic
+            data.dashes = true;
+            data.width = 2;
+            data.arrows = 'to, from';
+            peerLinks = [...peerLinks, [data.from, data.to]];
+          }
+          newLinkType = null;
+
+          // Callback
+          callback(data);
+
+          // Adjust height of graph
+          const levels = getPropagationRanks(
+            { graph: { cp_links: cpLinks, peer_links: peerLinks } },
+            [],
+            []
+          );
+          console.log('levels', levels);
+          nodes.forEach((node) => {
+            nodes.update({ ...node, level: levels[node.id] || 1 });
+          });
+          // And disable edit mode
+          network.disableEditMode();
+        }
+      },
+      interaction: { hover: true },
+      physics: false
     };
 
     // Initialize network
-    // const container = document.getElementById('mynetwork');
     network = new Network(container, { nodes, edges }, options);
+    network.disableEditMode();
 
     network.on('click', (params) => {
       if (params.nodes.length > 0) {
@@ -130,26 +155,95 @@
         selectedLinkID = params.edges[0];
         selectedLink = edges.get(selectedLinkID);
       }
+
+      contextMenuData.show = false;
     });
 
     network.on('deselectNode', () => {
       selectedASN = null;
       selectedAS = null;
       selectedASLevel = null;
+      contextMenuData.show = false;
     });
 
     network.on('deselectEdge', () => {
       selectedLinkID = null;
     });
 
-    // nodes.on('add', (event, properties, senderId) => {
-    //   console.log('add node');
-    //   network.setData({ nodes, edges });
+    // network.on('oncontext', function (params) {
+    //   params.event.preventDefault();
+    //   // const selectedNodeId = params.nodes[0];
+    //   // if (selectedNodeId) {
+    //   contextMenuData = {
+    //     show: true,
+    //     x: params.event.pageX,
+    //     y: params.event.pageY
+    //   };
+    //   nodeData = null;
+    //   // }
     // });
-    // nodes.on('remove', (event, properties, senderId) => {
-    //   console.log('delete node');
-    //   network.setData({ nodes, edges });
-    // });
+
+    // Right click
+    network.on('oncontext', function (params) {
+      // params.event.preventDefault();
+      let show = false;
+
+      // console.log(network.getNodeAt(network.DOMtoCanvas({ x: event.pageX, y: event.pageY })));
+      if (nodeData !== null) {
+        // selectedASN = nodeData.id;
+        selectedASN2 = nodeData.id;
+        selectedLinkID2 = null;
+        show = true;
+        params.event.preventDefault();
+        nodeData = null;
+      } else if (edgeData !== null) {
+        // selectedLinkID = edgeData.id;
+        selectedLinkID2 = edgeData.id;
+        selectedASN2 = null;
+        show = true;
+        params.event.preventDefault();
+      } else {
+        selectedASN2 = null;
+        selectedLinkID2 = null;
+      }
+      contextMenuData = {
+        show: show,
+        x: params.event.pageX,
+        y: params.event.pageY
+      };
+    });
+
+    // Show Local RIB on hover
+    network.on('hoverNode', (params) => {
+      const node = nodes.get(params.node);
+      if (node !== null) {
+        nodeData = {
+          id: node.id,
+          policy: node.policy || 'BGP',
+          x: params.event.pageX,
+          y: params.event.pageY
+        };
+      }
+      // console.log(nodeData);
+    });
+
+    network.on('blurNode', (params) => {
+      nodeData = null;
+    });
+
+    network.on('hoverEdge', (params) => {
+      const edge = edges.get(params.edge);
+      // console.log('edge found', edge);
+      edgeData = {
+        id: edge.id,
+        x: params.event.pageX,
+        y: params.event.pageY
+      };
+    });
+
+    network.on('blurEdge', (params) => {
+      edgeData = null;
+    });
   });
 
   onDestroy(() => {
@@ -161,7 +255,6 @@
   $: if (selectedAS && selectedASLevel !== selectedAS.level) {
     selectedAS = { ...selectedAS, level: selectedASLevel };
     nodes.update(selectedAS);
-    // network.setData({ nodes, edges });
   }
 
   function addNode() {
@@ -179,14 +272,16 @@
   }
 
   function addEdge() {
-    if (edgeType === 'consumer-producer' && newEdgeFrom && newEdgeTo) {
-      // Consumer-producer edge logic
+    if (edgeType === 'customer-provider' && newEdgeFrom && newEdgeTo) {
+      // Customer-provider edge logic
       const newEdge = {
         from: newEdgeFrom,
         to: newEdgeTo
       };
       edges.add(newEdge);
       network.setData({ nodes, edges });
+      // cpLinks.push([newEdgeFrom, newEdgeTo]);
+      cpLinks = [...cpLinks, [newEdgeFrom, newEdgeTo]];
       newEdgeFrom = '';
       newEdgeTo = ''; // Reset inputs
       showAddEdgeModal = false; // Close modal
@@ -196,19 +291,76 @@
         from: newPeer1,
         to: newPeer2,
         dashes: true,
-        width: 2
+        width: 2,
+        arrows: 'to, from'
       };
       edges.add(newEdge);
       network.setData({ nodes, edges });
-      newEdgeFrom = '';
-      newEdgeTo = ''; // Reset inputs
+      // peerLinks.push([newPeer1, newPeer2]);
+      peerLinks = [...peerLinks, [newPeer1, newPeer2]];
+      newPeer1 = '';
+      newPeer2 = ''; // Reset inputs
       showAddEdgeModal = false; // Close modal
     }
+
+    // Adjust height of graph
+    const levels = getPropagationRanks(
+      { graph: { cp_links: cpLinks, peer_links: peerLinks } },
+      [],
+      []
+    );
+    console.log('levels', levels);
+    nodes.forEach((node) => {
+      nodes.update({ ...node, level: levels[node.id] || 1 });
+    });
+  }
+
+  function addCPLink() {
+    network.addEdgeMode();
+    newLinkType = 'customer-provider';
+  }
+
+  function addPeerLink() {
+    network.addEdgeMode();
+    newLinkType = 'peer';
+  }
+
+  function addEdge2() {
+    if (edgeType === 'peer') {
+      callbackData.dashes = true;
+      callbackData.width = 2;
+      callbackData.arrows = 'to, from';
+    }
+
+    showConfirmAddEdgeModal = false;
+    // callbackFunc = null;
+    // callbackData = null;
+    callbackFunc(callbackData);
   }
 
   function deleteNode() {
     if (selectedASN !== null) {
+      // Log before
+      // console.log('before delete node', edges, cpLinks, peerLinks);
+
+      // Get all connected edges to the node
+      const connectedEdges = edges.get({
+        filter: function (item) {
+          return item.from === selectedASN || item.to === selectedASN;
+        }
+      });
+
+      // Remove all connected edges from the network
+      edges.remove(connectedEdges.map((edge) => edge.id));
+      cpLinks = cpLinks.filter((link) => link[0] !== selectedASN && link[1] !== selectedASN);
+      peerLinks = peerLinks.filter((link) => link[0] !== selectedASN && link[1] !== selectedASN);
+
+      // Remove the node
       nodes.remove(selectedASN);
+
+      // Log to check
+      // console.log('after delete node', edges, cpLinks, peerLinks);
+
       // network.setData({ nodes, edges });
       selectedASN = null;
       selectedAS = null;
@@ -218,18 +370,43 @@
 
   function deleteEdge() {
     if (selectedLinkID !== null) {
+      const edge = edges.get(selectedLinkID);
+      if (edge.dashes) {
+        peerLinks = peerLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
+      } else {
+        cpLinks = cpLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
+      }
+
       edges.remove(selectedLinkID);
       // network.setData({ nodes, edges });
       selectedLinkID = null;
       selectedLink = null;
+
+      // Update height
+      console.log('links in deleteEdge', cpLinks, peerLinks);
+      const levels = getPropagationRanks(
+        { graph: { cp_links: cpLinks, peer_links: peerLinks } },
+        [],
+        []
+      );
+      nodes.forEach((node) => {
+        nodes.update({ ...node, level: levels[node.id] || 1 });
+      });
     }
   }
 
   function updateASRole() {
     if (selectedASN !== null) {
       let color: {} | null;
+
       if (selectedASRole === 'victim') {
-        color = { border: '#16a34a', background: '#86efac' };
+        color = { border: '#047857', background: '#34d399' };
+
+        if (victimASN !== null && victimASN !== selectedASN) {
+          nodes.update({ id: victimASN, role: null, color: null });
+        }
+
+        victimASN = selectedASN;
       } else if (selectedASRole === 'attacker') {
         color = { border: '#b91c1c', background: '#f87171' };
       } else {
@@ -249,6 +426,65 @@
       }
       nodes.update({ id: selectedASN, policy: selectedASPolicy, shape: shape });
     }
+  }
+
+  function clearGraph() {
+    nodes.clear();
+    edges.clear();
+  }
+
+  function handleContextMenuAction(action: string) {
+    if (action === 'deleteNode' && selectedASN2 !== null) {
+      // Log before
+      console.log('before delete node', edges, cpLinks, peerLinks);
+
+      // Get all connected edges to the node
+      const connectedEdges = edges.get({
+        filter: function (item) {
+          return item.from === selectedASN2 || item.to === selectedASN2;
+        }
+      });
+
+      // Remove all connected edges from the network
+      edges.remove(connectedEdges.map((edge) => edge.id));
+      cpLinks = cpLinks.filter((link) => link[0] !== selectedASN2 && link[1] !== selectedASN2);
+      peerLinks = peerLinks.filter((link) => link[0] !== selectedASN2 && link[1] !== selectedASN2);
+
+      // Remove the node
+      nodes.remove(selectedASN2);
+
+      // Log to check
+      console.log('after delete node', edges, cpLinks, peerLinks);
+
+      // network.setData({ nodes, edges });
+      selectedASN2 = null;
+    } else if (action === 'deleteEdge' && selectedLinkID2 !== null) {
+      const edge = edges.get(selectedLinkID2);
+      // console.log(selectedLinkID2);
+      // console.log(edge.from, edge.to);
+
+      if (edge.dashes) {
+        peerLinks = peerLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
+      } else {
+        cpLinks = cpLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
+      }
+
+      edges.remove(selectedLinkID2);
+      selectedLinkID2 = null;
+      console.log('links in context menu', cpLinks, peerLinks);
+      const levels = getPropagationRanks(
+        { graph: { cp_links: cpLinks, peer_links: peerLinks } },
+        [],
+        []
+      );
+      // console.log('levels in context menu', levels);
+      nodes.forEach((node) => {
+        // const prevLevel = node.level;
+        nodes.update({ ...node, level: levels[node.id] || 1 });
+      });
+    }
+
+    contextMenuData.show = false;
   }
 </script>
 
@@ -270,10 +506,10 @@
     <li class="me-2">
       <a
         href="#"
-        class="inline-block p-4 rounded-t-lg {edgeType === 'consumer-producer'
+        class="inline-block p-4 rounded-t-lg {edgeType === 'customer-provider'
           ? 'text-blue-600 bg-gray-50'
           : 'hover:text-gray-600 hover:bg-gray-50'}"
-        on:click|preventDefault={() => (edgeType = 'consumer-producer')}>Consumer-Producer</a
+        on:click|preventDefault={() => (edgeType = 'customer-provider')}>Customer-Provider</a
       >
     </li>
     <li class="me-2">
@@ -287,7 +523,7 @@
     </li>
   </ul>
 
-  {#if edgeType === 'consumer-producer'}
+  {#if edgeType === 'customer-provider'}
     <input
       type="number"
       bind:value={newEdgeFrom}
@@ -318,14 +554,38 @@
   <button on:click={addEdge} class="bg-emerald-500 text-white p-2 rounded">Add</button>
 </Modal>
 
+<Modal bind:showModal={showConfirmAddEdgeModal} on:close={() => (showConfirmAddEdgeModal = false)}>
+  <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Edge</div>
+  <!-- <div class="p-1"> -->
+  <label>
+    <input type="radio" value="customer-provider" bind:group={edgeType} />
+    Customer-Provider
+  </label>
+  <label>
+    <input type="radio" value="peer" bind:group={edgeType} />
+    Peer-Peer
+  </label>
+  <!-- </div> -->
+  <button on:click={addEdge2} class="bg-emerald-500 text-white p-2 rounded">Save</button>
+</Modal>
+
 <h2 class="text-sm font-medium leading-6 mb-2">Graph</h2>
 <button on:click={() => (showModal = true)} class="bg-emerald-500 text-white p-2 rounded"
   >Add AS</button
 >
-<button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
-  >Add Link</button
+<button on:click={addCPLink} class="bg-emerald-500 text-white p-2 rounded">Add CP Link</button>
+<button on:click={addPeerLink} class="bg-emerald-500 text-white p-2 rounded">Add Peer Link</button>
+
+<!-- <button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
+  >Add Customer-Provider Link</button
 >
-<div bind:this={container} class="w-full" style="height: 31.5rem"></div>
+<button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
+  >Add Peer-Peer Link</button
+> -->
+<button on:click={clearGraph} class="bg-red-500 text-white p-2 rounded">Clear Graph</button>
+
+<!-- Graph -->
+<div bind:this={container} class="mt-2 w-full" style="height: 35rem"></div>
 
 {#if selectedASN !== null}
   <div class="space-y-2">
@@ -374,3 +634,82 @@
     <button on:click={deleteEdge} class="bg-red-500 text-white p-2 rounded">Delete Link</button>
   </div>
 {/if}
+
+{#if nodeData}
+  <div class="tooltip" style="left: {nodeData.x}px; top: {nodeData.y}px;">
+    <p class="mb-2">{nodeData.policy.toUpperCase()}</p>
+    {#if simulationResults !== null && simulationResults.local_ribs[nodeData.id]}
+      <table border="0" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">
+        <tr>
+          <td colspan="4">Local RIB</td>
+        </tr>
+        {#each simulationResults.local_ribs[nodeData.id] as { type, mask, as_path }}
+          <tr>
+            <td>{mask}</td>
+            <td>{as_path.join(', ')}</td>
+            <td>
+              {#if type === 'victim'}
+                &#128519;
+              {:else if type === 'attacker'}
+                &#128520;
+              {/if}
+            </td>
+          </tr>
+        {/each}
+      </table>
+    {/if}
+  </div>
+{/if}
+
+{#if contextMenuData.show}
+  <div class="context-menu" style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
+    <ul>
+      {#if selectedASN2 !== null}
+        <li on:click={() => handleContextMenuAction('deleteNode')}>Delete Node</li>
+      {/if}
+      {#if selectedLinkID2 !== null}
+        <li on:click={() => handleContextMenuAction('deleteEdge')}>Delete Edge</li>
+      {/if}
+    </ul>
+  </div>
+{/if}
+
+<style>
+  .context-menu {
+    position: absolute;
+    z-index: 200;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    padding: 5px;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  li {
+    padding: 5px 10px;
+    cursor: pointer;
+  }
+  li:hover {
+    background-color: #f0f0f0;
+  }
+
+  .tooltip {
+    position: absolute;
+    z-index: 100;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+  }
+  table {
+    border: 1px solid black;
+  }
+  td {
+    border: 1px solid black;
+  }
+</style>
