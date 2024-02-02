@@ -4,43 +4,20 @@
   // import DiagramFetcher from '../components/DiagramFetcher.svelte';
   import Graph from '../components/Graph.svelte';
   import type { Config } from '$lib';
-  import { getPropagationRanks } from '$lib';
+  import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
+  import CitationModal from '../components/CitationModal.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
+  import { onMount } from 'svelte';
 
   // State
-  let nodes = new DataSet([
-    // { id: 1, label: '1', level: 1, color: { border: '#ea580c', background: '#f59e0b' } },
-    // { id: 2, label: '2', level: 2, color: { border: '#ea580c', background: '#f59e0b' } },
-    // { id: 3, label: '3', level: 2, color: { border: '#ea580c', background: '#f59e0b' } },
-    // // { id: 1, label: '1', level: 1, color: { border: '#16a34a', background: '#86efac' } },
-    // // { id: 2, label: '2', level: 2, color: { border: '#16a34a', background: '#86efac' } },
-    // // { id: 3, label: '3', level: 2, color: { border: '#16a34a', background: '#86efac' } },
-    // {
-    //   id: 666,
-    //   label: '666',
-    //   level: 3,
-    //   role: 'attacker',
-    //   color: { border: '#b91c1c', background: '#f87171' }
-    // },
-    // {
-    //   id: 777,
-    //   label: '777',
-    //   level: 3,
-    //   role: 'victim',
-    //   color: { border: '#047857', background: '#34d399' }
-    // }
-  ]);
-  let edges = new DataSet([
-    // { id: crypto.randomUUID(), from: 1, to: 2 },
-    // { id: crypto.randomUUID(), from: 2, to: 777 },
-    // { id: crypto.randomUUID(), from: 3, to: 666 },
-    // { id: crypto.randomUUID(), from: 3, to: 2, dashes: true, width: 2, arrows: 'to, from' }
-  ]);
+  let nodes = new DataSet([]);
+  let edges = new DataSet([]);
   let config: Config = {
     name: '',
     desc: '',
     scenario: null,
-    announcements: [],
-    propagation_rounds: 1
+    announcements: []
+    // propagation_rounds: 1
   };
 
   let imageURL = '';
@@ -48,12 +25,21 @@
   let fileInput; // Reference to the hidden file input
   let submitPressed;
   let isImageOpen = false;
+  let isDropdownOpen = false;
   let simulationResults: {} | null = null;
   let cpLinks: number[][] = [];
   let peerLinks: number[][] = [];
+  let showInfo = false;
+  let showBanner = false;
+  let errorMessage = '';
+
+  onMount(() => {
+    loadExampleConfig(exampleConfigs['Subprefix Hijack']);
+  });
 
   function loadConfig(event) {
     const file = event.target.files[0];
+    // console.log(file);
     if (file && file.type === 'application/json') {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -69,48 +55,12 @@
     simulationResults = null;
   }
 
-  // function calculateLevels(
-  //   config: Config,
-  //   cpLinks: number[],
-  //   peerLinks: number[]
-  // ): Record<number, number> {
-  //   // For demo
-  //   if (config.name === 'Config 1') {
-  //     return {
-  //       1: 1,
-  //       2: 2,
-  //       3: 2,
-  //       666: 3,
-  //       777: 3
-  //     };
-  //   } else if (config.name === 'Config 3') {
-  //     return {
-  //       1: 1,
-  //       2: 2,
-  //       3: 2,
-  //       4: 3,
-  //       6: 3,
-  //       777: 3,
-  //       5: 3
-  //     };
-  //   } else if (config.name === 'Config 36') {
-  //     return {
-  //       666: 4,
-  //       777: 4,
-  //       1: 3,
-  //       2: 3,
-  //       3: 3,
-  //       4: 3,
-  //       5: 2,
-  //       8: 2,
-  //       9: 2,
-  //       10: 1,
-  //       11: 1
-  //     };
-  //   } else {
-  //     return {};
-  //   }
-  // }
+  function loadExampleConfig(example: Config) {
+    config = example;
+    generateGraph(config);
+    simulationResults = null;
+    isDropdownOpen = false;
+  }
 
   function generateGraph(data: Config) {
     // Reset nodes and edges
@@ -138,10 +88,18 @@
       data.scenario = null;
     }
 
-    const levels = getPropagationRanks(data, data.graph.cp_links, data.graph.peer_links);
-    // const levels = calculateLevels(data, data.graph.cp_links, data.graph.peer_links);
-    // console.log(levels);
+    let levels: {};
+    // console.log(data.graph.propagation_ranks);
+    if (data.graph?.propagation_ranks) {
+      // Reverse and turn it into a map
+      levels = listToIndexJsonReversed(data.graph.propagation_ranks);
+      console.log('listToIndexJSON', levels);
+    } else {
+      levels = getPropagationRanks(data.graph);
+    }
+
     const policyMap = data.asn_policy_map || {};
+
     // Update links after loading from file
     cpLinks = [];
     data.graph.cp_links.forEach((arr) => {
@@ -201,13 +159,6 @@
     data.graph.cp_links.forEach((link) => {
       edges.add({ from: link[0], to: link[1] });
     });
-
-    // nodes.forEach((e, id) => {
-    //   console.log(e);
-    // });
-
-    // Update the network with new data
-    // network.setData({ nodes, edges });
   }
 
   function addGraphToConfig() {
@@ -230,32 +181,13 @@
       }
     });
 
-    // Process edges to classify into CP and peer links
-    // edges.forEach((edge) => {
-    //   // const fromLevel = nodes.get(edge.from).level;
-    //   // const toLevel = nodes.get(edge.to).level;
-
-    //   // if (fromLevel === toLevel) {
-    //   //   peerLinks.push([edge.from, edge.to]);
-    //   // } else {
-    //   //   cpLinks.push([edge.from, edge.to]);
-    //   // }
-    //   // console.log(edge);
-
-    //   // Check edges instead of level for now, until we can get import levels fixed
-    //   if (edge.dashes) {
-    //     peerLinks.push([edge.from, edge.to]);
-    //   } else {
-    //     cpLinks.push([edge.from, edge.to]);
-    //   }
-    // });
-
     config = {
       ...config,
       attacker_asns: attackerASNs,
       victim_asns: victimASNs,
       asn_policy_map: asnPolicyMap,
       graph: {
+        ...config.graph,
         cp_links: cpLinks,
         peer_links: peerLinks
       }
@@ -267,6 +199,7 @@
     //   imageURL = null;
     //   return Promise.resolve();
     // }
+    showBanner = false; // Reset error state on each submission
     addGraphToConfig();
     console.log(cpLinks, peerLinks);
     // console.log(config.graph?.cp_links, config.graph?.peer_links);
@@ -285,9 +218,22 @@
         },
         body: JSON.stringify(config)
       });
-      // if (!response.ok) {
-      //   console.log(response.json());
-      // }
+      if (!response.ok) {
+        showBanner = true;
+        // Get error message
+        const error = await response.json();
+        if (error) {
+          errorMessage = error.detail[0].msg;
+          if (errorMessage.includes('Value error, ')) {
+            errorMessage = errorMessage.replace('Value error, ', '');
+          }
+        } else {
+          errorMessage = 'Failed to run simulation';
+        }
+
+        return;
+      }
+
       let blob = await response.blob();
 
       simulationResults = await responseJSON.json();
@@ -321,7 +267,9 @@
         nodes.update({ ...node, color: color });
       });
     } catch (error) {
-      console.error('Error fetching image:', error);
+      showBanner = true;
+      errorMessage = 'Failed to connect to the server';
+      // console.error('Error running submission:', error);
     }
   }
 
@@ -379,18 +327,63 @@
   <title>BGPy</title>
 </svelte:head>
 
-<main class="container mx-auto px-4 py-4 space-y-6">
-  <h1 class="text-4xl font-semibold">BGPy</h1>
-  <!-- <p>Enter a JSON of the configuration you would like to test.</p> -->
+<main class="container mx-auto px-4 py-4">
+  <h1 class="text-4xl font-semibold mb-4">BGPy</h1>
+
+  <ErrorBanner message={errorMessage} bind:showBanner />
+
+  <!-- Two columns for form and graph -->
   <div class="flex md:flex-row flex-col space-x-4">
     <div class="basis-1/2 order-2 md:order-1">
-      <button type="submit" class="bg-indigo-500 text-white p-2 rounded mb-4"
-        >Subprefix Hijack</button
-      >
-      <button type="submit" class="bg-indigo-500 text-white p-2 rounded mb-4"
-        >BGP Propagation</button
-      >
+      <!-- Examples button -->
+      <div class="relative dropdow mb-4">
+        <button
+          id="dropdownDefaultButton"
+          on:click={() => (isDropdownOpen = !isDropdownOpen)}
+          class="text-white bg-indigo-500 rounded text-sm px-3 py-2.5 text-center inline-flex items-center"
+          type="button"
+        >
+          Examples
+          <svg
+            class="w-2.5 h-2.5 ms-3"
+            aria-hidden="true"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 10 6"
+          >
+            <path
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="m1 1 4 4 4-4"
+            />
+          </svg>
+        </button>
+
+        <!-- Examples dropdown -->
+        {#if isDropdownOpen}
+          <div
+            class="absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow w-45 dark:bg-gray-700"
+          >
+            <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
+              {#each Object.keys(exampleConfigs) as configName}
+                <li class="hover:bg-gray-100">
+                  <button
+                    class="block px-4 py-2"
+                    on:click={() => loadExampleConfig(exampleConfigs[configName])}
+                  >
+                    {configName}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+      </div>
+
       <ConfigForm {config} {handleSubmit} />
+
       <div class="mt-4">
         <button
           type="submit"
@@ -428,15 +421,40 @@
         {/if}
       </div>
     </div>
+
     <div class="basis-1/2 order-1 md:order-2">
+      <!-- Link and citation buttons -->
+      <div class="flex flex-row float-right">
+        <a
+          href="https://www.github.com/jfuruness/bgpy_pkg"
+          target="_blank"
+          class="p-2 rounded-full hover:bg-gray-200"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+            ><path
+              d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+            /></svg
+          >
+        </a>
+        <button on:click={() => (showInfo = true)} class="p-2 rounded-full hover:bg-gray-200">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+            ><path
+              d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"
+            /></svg
+          >
+        </button>
+      </div>
+
       <Graph {nodes} {edges} {simulationResults} bind:cpLinks bind:peerLinks />
     </div>
   </div>
 
   {#if imageURL}
-    <details on:toggle={(event) => (isImageOpen = !isImageOpen)}>
+    <details class="mt-4" on:toggle={(event) => (isImageOpen = !isImageOpen)}>
       <summary class="text-sm font-medium leading-6 mb-2">Diagram</summary>
       <p><img src={imageURL} alt="System diagram" /></p>
     </details>
   {/if}
+
+  <CitationModal bind:showModal={showInfo} on:close={() => (showInfo = false)} />
 </main>

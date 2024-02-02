@@ -19,8 +19,7 @@
       roa_valid_length: false,
       roa_origin: ''
     };
-    config.announcements.push(newAnnouncement);
-    config.announcements = config.announcements;
+    config.announcements = [...config.announcements, newAnnouncement];
     console.log(newAnnouncement);
   }
 
@@ -56,7 +55,15 @@
   </div>
   <div>
     <label for="scenario" class="block text-sm font-medium leading-6 mb-2">Scenario</label>
-    <select bind:value={config.scenario} class="p-2 border border-gray-300 rounded w-full">
+    <select
+      bind:value={config.scenario}
+      class="p-2 border border-gray-300 rounded w-full"
+      on:change={() => {
+        if (config.scenario !== null) {
+          config.announcements = [];
+        }
+      }}
+    >
       <option value={null}>Custom Scenario</option>
       <option value="SubprefixHijack">Subprefix Hijack</option>
       <option value="PrefixHijack">Prefix Hijack</option>

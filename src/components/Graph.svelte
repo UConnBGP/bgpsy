@@ -117,11 +117,7 @@
           callback(data);
 
           // Adjust height of graph
-          const levels = getPropagationRanks(
-            { graph: { cp_links: cpLinks, peer_links: peerLinks } },
-            [],
-            []
-          );
+          const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
           console.log('levels', levels);
           nodes.forEach((node) => {
             nodes.update({ ...node, level: levels[node.id] || 1 });
@@ -304,11 +300,7 @@
     }
 
     // Adjust height of graph
-    const levels = getPropagationRanks(
-      { graph: { cp_links: cpLinks, peer_links: peerLinks } },
-      [],
-      []
-    );
+    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
     console.log('levels', levels);
     nodes.forEach((node) => {
       nodes.update({ ...node, level: levels[node.id] || 1 });
@@ -384,11 +376,7 @@
 
       // Update height
       console.log('links in deleteEdge', cpLinks, peerLinks);
-      const levels = getPropagationRanks(
-        { graph: { cp_links: cpLinks, peer_links: peerLinks } },
-        [],
-        []
-      );
+      const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
       nodes.forEach((node) => {
         nodes.update({ ...node, level: levels[node.id] || 1 });
       });
@@ -472,11 +460,7 @@
       edges.remove(selectedLinkID2);
       selectedLinkID2 = null;
       console.log('links in context menu', cpLinks, peerLinks);
-      const levels = getPropagationRanks(
-        { graph: { cp_links: cpLinks, peer_links: peerLinks } },
-        [],
-        []
-      );
+      const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
       // console.log('levels in context menu', levels);
       nodes.forEach((node) => {
         // const prevLevel = node.level;

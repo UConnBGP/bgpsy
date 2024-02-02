@@ -1,11 +1,23 @@
 // place files you want to import through the `$lib` alias in this folder.
 
-import type { Config } from './types';
-
 export type * from './types';
+export { exampleConfigs } from './examples';
 
-export function getPropagationRanks(config: Config, cpLinks: number[][], peerLinks: number[][]) {
-  const graph = config.graph;
+import type { Graph } from './types';
+
+export function listToIndexJsonReversed(list: number[][]) {
+  const result = {};
+  const listLength = list.length;
+  list.forEach((sublist, index) => {
+    sublist.forEach((item) => {
+      // Reverse index calculation and add 1
+      result[item] = listLength - index;
+    });
+  });
+  return result;
+}
+export function getPropagationRanks(graph: Graph) {
+  // const graph = config.graph;
   let asDict = new Map();
 
   // Initialize ASes and their relationships

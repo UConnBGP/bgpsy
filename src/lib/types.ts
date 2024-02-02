@@ -1,6 +1,7 @@
 export type Graph = {
   cp_links: number[][];
   peer_links: number[][];
+  propagation_ranks?: number[][];
 };
 
 export type Announcement = {
@@ -19,13 +20,6 @@ export type Config = {
   attacker_asns?: number[];
   victim_asns?: number[];
   asn_policy_map?: Record<number, string>;
-  propagation_rounds: number;
+  // propagation_rounds: number;
   graph?: Graph;
-};
-
-export type AS = {
-  asn: number;
-  customers: AS[];
-  providers: AS[];
-  peers: AS[];
 };
