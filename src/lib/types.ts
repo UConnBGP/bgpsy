@@ -16,10 +16,11 @@ export type Config = {
   name: string;
   desc: string;
   scenario: string | null;
+  scenario_modifier?: string | null;
   announcements: Announcement[];
   attacker_asns?: number[];
   victim_asns?: number[];
   asn_policy_map?: Record<number, string>;
-  // propagation_rounds: number;
+  propagation_rounds?: number;
   graph?: Graph;
 };

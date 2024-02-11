@@ -5,6 +5,7 @@ export const exampleConfigs: Record<string, Config> = {
     name: 'Config 1',
     desc: 'BGP hidden hijack (with simple AS)',
     scenario: 'SubprefixHijack',
+    scenario_modifier: null,
     announcements: [],
     attacker_asns: [666],
     victim_asns: [777],
@@ -52,6 +53,7 @@ export const exampleConfigs: Record<string, Config> = {
     name: 'Config 3',
     desc: 'Basic BGP propagation (with normal BGP AS)',
     scenario: 'ValidPrefix',
+    scenario_modifier: null,
     announcements: [],
     victim_asns: [777],
     graph: {
@@ -71,6 +73,7 @@ export const exampleConfigs: Record<string, Config> = {
     name: 'Config 36',
     desc: 'Valley Free (Gao Rexford) demonstration',
     scenario: 'SubprefixHijack',
+    scenario_modifier: null,
     announcements: [],
     attacker_asns: [666],
     victim_asns: [777],
@@ -101,6 +104,90 @@ export const exampleConfigs: Record<string, Config> = {
         [1, 2, 3, 4],
         [5, 8, 9],
         [10, 11]
+      ]
+    }
+  },
+  'Accidental Route Leak with OTC': {
+    name: 'ex_019_route_leak_otc_simple',
+    desc: 'Accidental route leak against Only To Customers. This policy sets the only_to_customers attribute specified in RFC 9234, which protects against simple route leaks.',
+    scenario: 'AccidentalRouteLeak',
+    scenario_modifier: null,
+    announcements: [],
+    attacker_asns: [666],
+    victim_asns: [777],
+    asn_policy_map: {
+      '1': 'otc',
+      '2': 'otc'
+    },
+    propagation_rounds: 2,
+    graph: {
+      cp_links: [
+        [1, 666],
+        [2, 666],
+        [2, 777],
+        [4, 777],
+        [5, 1],
+        [8, 1],
+        [8, 2],
+        [9, 4],
+        [10, 777],
+        [11, 8],
+        [11, 9],
+        [11, 10],
+        [12, 10]
+      ],
+      peer_links: [
+        [8, 9],
+        [9, 10],
+        [3, 9]
+      ],
+      propagation_ranks: [
+        [666, 777],
+        [1, 2, 3, 4],
+        [5, 8, 9, 10],
+        [11, 12]
+      ]
+    }
+  },
+  'Origin Prefix Hijack with Pathend': {
+    name: 'ex_015_origin_prefix_hijack_pathend_simple',
+    desc: 'Origin prefix hijack with pathend simple\nPathend checks the end of the path for valid providers\nand is thus protected against simple origin hijacks',
+    scenario: 'PrefixHijack',
+    scenario_modifier: 'origin_hijack',
+    base_policy: null,
+    announcements: [],
+    attacker_asns: [666],
+    victim_asns: [777],
+    asn_policy_map: {
+      '1': 'pathend',
+      '777': 'pathend'
+    },
+    graph: {
+      cp_links: [
+        [1, 666],
+        [2, 666],
+        [2, 777],
+        [4, 777],
+        [5, 1],
+        [8, 1],
+        [8, 2],
+        [9, 4],
+        [10, 777],
+        [11, 8],
+        [11, 9],
+        [11, 10],
+        [12, 10]
+      ],
+      peer_links: [
+        [8, 9],
+        [9, 10],
+        [3, 9]
+      ],
+      propagation_ranks: [
+        [666, 777],
+        [1, 2, 3, 4],
+        [5, 8, 9, 10],
+        [11, 12]
       ]
     }
   }

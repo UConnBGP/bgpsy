@@ -68,6 +68,7 @@
   let contextMenuData = { show: false, x: 0, y: 0 };
   let victimASN = null;
   let newLinkType = null;
+  let addingEdge: bool = false;
 
   onMount(() => {
     // Configuration for the network
@@ -91,23 +92,24 @@
         }
       },
       edges: {
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
+        width: 2
       },
       manipulation: {
         enabled: false,
         addEdge: (data, callback) => {
           if (newLinkType === 'customer-provider') {
             // customer-provider logic
+            data.arrows = {
+              to: {
+                enabled: true,
+                scaleFactor: 0.8
+              }
+            };
             cpLinks = [...cpLinks, [data.from, data.to]];
           } else if (newLinkType === 'peer') {
             // peer-to-peer edge logic
             data.dashes = true;
-            data.width = 2;
+            // data.width = 2;
             data.arrows = 'to, from';
             peerLinks = [...peerLinks, [data.from, data.to]];
           }
@@ -124,6 +126,9 @@
           });
           // And disable edit mode
           network.disableEditMode();
+          // Re-enable hover
+          // network.setOptions({ ...options, interaction: { hover: true } });
+          addingEdge = false;
         }
       },
       interaction: { hover: true },
@@ -211,6 +216,9 @@
 
     // Show Local RIB on hover
     network.on('hoverNode', (params) => {
+      if (addingEdge) {
+        return;
+      }
       const node = nodes.get(params.node);
       if (node !== null) {
         nodeData = {
@@ -310,11 +318,15 @@
   function addCPLink() {
     network.addEdgeMode();
     newLinkType = 'customer-provider';
+    // network.setOptions({ ...options, interaction: { hover: false } });
+    addingEdge = true;
   }
 
   function addPeerLink() {
     network.addEdgeMode();
     newLinkType = 'peer';
+    // network.setOptions({ ...options, interaction: { hover: false } });
+    addingEdge = true;
   }
 
   function addEdge2() {
@@ -407,7 +419,13 @@
   function updateASPolicy() {
     if (selectedASN !== null) {
       let shape: string | null;
-      if (selectedASPolicy.toLowerCase() === 'rov') {
+      if (
+        selectedASPolicy.toLowerCase() === 'rov' ||
+        selectedASPolicy.toLowerCase() === 'aspa' ||
+        selectedASPolicy.toLowerCase() === 'bgpsec' ||
+        selectedASPolicy.toLowerCase() === 'otc' ||
+        selectedASPolicy.toLowerCase() === 'pathend'
+      ) {
         shape = 'square';
       } else {
         shape = null;
@@ -605,6 +623,10 @@
       >
         <option value="bgp">BGP</option>
         <option value="rov">ROV</option>
+        <option value="aspa">ASPA</option>
+        <option value="bgpsec">BGPSec</option>
+        <option value="otc">Only to Customers</option>
+        <option value="pathend">Pathend</option>
       </select>
     </p>
 
@@ -623,24 +645,28 @@
   <div class="tooltip" style="left: {nodeData.x}px; top: {nodeData.y}px;">
     <p class="mb-2">{nodeData.policy.toUpperCase()}</p>
     {#if simulationResults !== null && simulationResults.local_ribs[nodeData.id]}
-      <table border="0" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">
-        <tr>
-          <td colspan="4">Local RIB</td>
-        </tr>
-        {#each simulationResults.local_ribs[nodeData.id] as { type, mask, as_path }}
+      {#if simulationResults.local_ribs[nodeData.id].length > 0}
+        <table border="0" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">
           <tr>
-            <td>{mask}</td>
-            <td>{as_path.join(', ')}</td>
-            <td>
-              {#if type === 'victim'}
-                &#128519;
-              {:else if type === 'attacker'}
-                &#128520;
-              {/if}
-            </td>
+            <td colspan="4">Local RIB</td>
           </tr>
-        {/each}
-      </table>
+          {#each simulationResults.local_ribs[nodeData.id] as { type, mask, as_path }}
+            <tr>
+              <td>{mask}</td>
+              <td>{as_path.join(', ')}</td>
+              <td>
+                {#if type === 'victim'}
+                  &#128519;
+                {:else if type === 'attacker'}
+                  &#128520;
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </table>
+      {:else}
+        <p>Disconnected</p>
+      {/if}
     {/if}
   </div>
 {/if}

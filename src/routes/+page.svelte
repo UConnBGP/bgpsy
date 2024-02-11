@@ -8,6 +8,7 @@
   import CitationModal from '../components/CitationModal.svelte';
   import ErrorBanner from '../components/ErrorBanner.svelte';
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
 
   // State
   let nodes = new DataSet([]);
@@ -36,6 +37,34 @@
   onMount(() => {
     loadExampleConfig(exampleConfigs['Subprefix Hijack']);
   });
+
+  $: if ($page.url.searchParams.has('link')) {
+    const link = $page.url.searchParams.get('link');
+    if (link) {
+      fetchConfig(link);
+    }
+  }
+
+  async function fetchConfig(url: string) {
+    try {
+      const response = await fetch(url);
+      console.log(url);
+      if (!response.ok) {
+        showBanner = true;
+        errorMessage = 'Network response was not ok';
+        console.log(response.status);
+        return;
+      }
+      config = await response.json();
+      generateGraph(config);
+    } catch (err) {
+      showBanner = true;
+      errorMessage = 'Failed to download JSON from link';
+    }
+
+    // Reset simulation results
+    simulationResults = null;
+  }
 
   function loadConfig(event) {
     const file = event.target.files[0];
@@ -132,9 +161,18 @@
       };
       if (asn in policyMap) {
         node.policy = policyMap[asn].toLowerCase();
-        if (node.policy === 'rov') {
+        if (
+          node.policy === 'rov' ||
+          node.policy === 'aspa' ||
+          node.policy === 'bgpsec' ||
+          node.policy === 'otc' ||
+          node.policy === 'pathend'
+        ) {
           node.shape = 'square';
         }
+      }
+      if (data.base_policy === 'ROVSimplePolicy') {
+        node.shape = 'square';
       }
       if (data.victim_asns?.includes(asn)) {
         node.role = 'victim';
@@ -152,12 +190,21 @@
         from: link[0],
         to: link[1],
         dashes: true,
-        witdh: 2,
+        width: 2,
         arrows: 'to, from'
       });
     });
     data.graph.cp_links.forEach((link) => {
-      edges.add({ from: link[0], to: link[1] });
+      edges.add({
+        from: link[0],
+        to: link[1],
+        arrows: {
+          to: {
+            enabled: true,
+            scaleFactor: 0.8
+          }
+        }
+      });
     });
   }
 
@@ -176,16 +223,29 @@
         victimASNs.push(node.id);
       }
 
-      if (node.policy === 'bgp' || node.policy == 'rov') {
+      if (
+        node.policy === 'bgp' ||
+        node.policy == 'rov' ||
+        node.policy == 'aspa' ||
+        node.policy == 'bgpsec' ||
+        node.policy == 'pathend' ||
+        node.policy == 'otc'
+      ) {
         asnPolicyMap[node.id] = node.policy;
       }
     });
+
+    let propgationRounds = 1;
+    if (config.scenario === 'AccidentalRouteLeak') {
+      propgationRounds = 2;
+    }
 
     config = {
       ...config,
       attacker_asns: attackerASNs,
       victim_asns: victimASNs,
       asn_policy_map: asnPolicyMap,
+      propagation_rounds: propgationRounds,
       graph: {
         ...config.graph,
         cp_links: cpLinks,
@@ -363,10 +423,8 @@
 
         <!-- Examples dropdown -->
         {#if isDropdownOpen}
-          <div
-            class="absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow w-45 dark:bg-gray-700"
-          >
-            <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
+          <div class="absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow w-45">
+            <ul class="py-2 text-sm text-gray-700">
               {#each Object.keys(exampleConfigs) as configName}
                 <li class="hover:bg-gray-100">
                   <button

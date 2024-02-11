@@ -72,18 +72,22 @@
       <option value="NonRoutedPrefixHijack">Non-Routed Prefix Hijack</option>
       <option value="NonRoutedSuperprefixHijack">Non-Routed Superprefix Hijack</option>
       <option value="NonRoutedSuperprefixPrefixHijack">Non-Routed Superprefix Prefix Hijack</option>
+      <option value="AccidentalRouteLeak">Accidental Route Leak</option>
     </select>
   </div>
-  <!-- <div>
-    <label for="rounds" class="block text-sm font-medium leading-6 mb-2">Propagation Rounds</label>
-    <select
-      bind:value={config.propagation_rounds}
-      class="p-2 border border-gray-300 rounded w-full"
-    >
-      <option value={1}>1</option>
-      <option value={2}>2</option>
-    </select>
-  </div> -->
+  {#if config.scenario !== null}
+    <div>
+      <label for="scenario" class="block text-sm font-medium leading-6 mb-2">Attack Modifier</label>
+      <select
+        bind:value={config.scenario_modifier}
+        class="p-2 border border-gray-300 rounded w-full"
+      >
+        <option value={null}>None</option>
+        <option value="origin_hijack">Origin Hijack</option>
+        <option value="shortest_path_export_all_hijack">Shortest Path Export All</option>
+      </select>
+    </div>
+  {/if}
 
   <!-- Announcements -->
   {#if config.scenario === null}
