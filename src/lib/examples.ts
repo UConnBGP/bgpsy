@@ -19,7 +19,7 @@ export const exampleConfigs: Record<string, Config> = {
     }
   },
   'Subprefix Hijack with Custom Announcements': {
-    name: 'Config 1',
+    name: 'Subprefix Hijack',
     desc: 'Subprefix hijack with custom announcements',
     scenario: null,
     announcements: [

@@ -3,12 +3,26 @@
   import ConfigForm from '../components/ConfigForm.svelte';
   // import DiagramFetcher from '../components/DiagramFetcher.svelte';
   import Graph from '../components/Graph.svelte';
-  import type { Config } from '$lib';
+  import { USE_FILE_MENU, type Config } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
   import CitationModal from '../components/CitationModal.svelte';
   import ErrorBanner from '../components/ErrorBanner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
+  import { Button } from '$lib/components/ui/button';
+  import {
+    ChevronDown,
+    Download,
+    Loader2,
+    Upload,
+    ArrowDownToLine,
+    Save,
+    FolderClosed,
+    Plus,
+    Ban
+  } from 'lucide-svelte';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+  import * as Menubar from '$lib/components/ui/menubar';
 
   // State
   let nodes = new DataSet([]);
@@ -33,9 +47,13 @@
   let showInfo = false;
   let showBanner = false;
   let errorMessage = '';
+  let isLoading: boolean = false;
+  let showAddASModal = false;
+  let showClearGraphModal = false;
+  let graphComponent: Graph;
 
   onMount(() => {
-    loadExampleConfig(exampleConfigs['Subprefix Hijack']);
+    loadExampleConfig(exampleConfigs['Subprefix Hijack with Custom Announcements']);
   });
 
   $: if ($page.url.searchParams.has('link')) {
@@ -260,6 +278,7 @@
     //   return Promise.resolve();
     // }
     showBanner = false; // Reset error state on each submission
+    isLoading = true;
     addGraphToConfig();
     console.log(cpLinks, peerLinks);
     // console.log(config.graph?.cp_links, config.graph?.peer_links);
@@ -291,6 +310,7 @@
           errorMessage = 'Failed to run simulation';
         }
 
+        isLoading = false;
         return;
       }
 
@@ -331,6 +351,8 @@
       errorMessage = 'Failed to connect to the server';
       // console.error('Error running submission:', error);
     }
+
+    isLoading = false;
   }
 
   function onFileButtonClicked() {
@@ -388,15 +410,75 @@
 </svelte:head>
 
 <main class="container mx-auto px-4 py-4">
-  <h1 class="text-4xl font-semibold mb-4">BGPy</h1>
+  <h1 class="text-4xl font-semibold mb-4">
+    <a href="https://github.com/jfuruness/bgpy_pkg/wiki" target="_blank">BGPy</a>
+  </h1>
+
+  <!-- File Menu -->
+  {#if USE_FILE_MENU}
+    <Menubar.Root class="mb-4">
+      <Menubar.Menu>
+        <Menubar.Trigger>File</Menubar.Trigger>
+        <Menubar.Content>
+          <Menubar.Item on:click={onFileButtonClicked}>
+            <FolderClosed class="mr-2 h-4 w-4" />
+            <span>Open Config</span>
+          </Menubar.Item>
+          <Menubar.Item on:click={downloadConfig}>
+            <Save class="mr-2 h-4 w-4" />
+            <span>Save Config</span>
+          </Menubar.Item>
+          <Menubar.Separator />
+          <Menubar.Item disabled={imageURL === ''} on:click={downloadZip}>
+            <Download class="mr-2 h-4 w-4" />
+            <span>Download Results Zip</span>
+          </Menubar.Item>
+        </Menubar.Content>
+      </Menubar.Menu>
+
+      <Menubar.Menu>
+        <Menubar.Trigger>Graph</Menubar.Trigger>
+        <Menubar.Content>
+          <Menubar.Item on:click={() => (showAddASModal = true)}>
+            <!-- <Plus class="mr-2 h-4 w-4" /> -->
+            <span>Add AS</span>
+          </Menubar.Item>
+          <Menubar.Item on:click={graphComponent.addCPLink}>
+            <!-- <Plus class="mr-2 h-4 w-4" /> -->
+            <span>Add Customer-Provider Link</span>
+          </Menubar.Item>
+          <Menubar.Item on:click={graphComponent.addPeerLink}>
+            <!-- <Plus class="mr-2 h-4 w-4" /> -->
+            <span>Add Peer Link</span>
+          </Menubar.Item>
+          <Menubar.Separator />
+          <Menubar.Item on:click={() => (showClearGraphModal = true)}>
+            <Ban class="mr-2 h-4 w-4" />
+            <span>Clear Graph</span>
+          </Menubar.Item>
+        </Menubar.Content>
+      </Menubar.Menu>
+
+      <Menubar.Menu>
+        <Menubar.Trigger>Examples</Menubar.Trigger>
+        <Menubar.Content>
+          {#each Object.keys(exampleConfigs) as configName}
+            <Menubar.Item on:click={() => loadExampleConfig(exampleConfigs[configName])}>
+              {configName}
+            </Menubar.Item>
+          {/each}
+        </Menubar.Content>
+      </Menubar.Menu>
+    </Menubar.Root>
+  {/if}
 
   <ErrorBanner message={errorMessage} bind:showBanner />
 
   <!-- Two columns for form and graph -->
   <div class="flex md:flex-row flex-col space-x-4">
     <div class="basis-1/2 order-2 md:order-1">
-      <!-- Examples button -->
-      <div class="relative dropdow mb-4">
+      <!-- Examples dropdown -->
+      <!-- <div class="relative dropdow mb-4">
         <button
           id="dropdownDefaultButton"
           on:click={() => (isDropdownOpen = !isDropdownOpen)}
@@ -421,7 +503,6 @@
           </svg>
         </button>
 
-        <!-- Examples dropdown -->
         {#if isDropdownOpen}
           <div class="absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow w-45">
             <ul class="py-2 text-sm text-gray-700">
@@ -438,12 +519,34 @@
             </ul>
           </div>
         {/if}
-      </div>
+      </div> -->
+
+      {#if !USE_FILE_MENU}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild let:builder>
+            <Button
+              builders={[builder]}
+              class="mb-4 bg-indigo-500 hover:bg-indigo-500/90"
+              size="sm"
+            >
+              Examples
+              <ChevronDown class="ml-2 h-4 w-4" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content>
+            {#each Object.keys(exampleConfigs) as configName}
+              <DropdownMenu.Item on:click={() => loadExampleConfig(exampleConfigs[configName])}>
+                {configName}
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      {/if}
 
       <ConfigForm {config} {handleSubmit} />
 
-      <div class="mt-4">
-        <button
+      <div class="mt-4 flex space-x-2">
+        <!-- <button
           type="submit"
           on:click={() => {
             submitPressed = true;
@@ -451,31 +554,47 @@
             submitPressed = false;
           }}
           class="bg-sky-500 text-white p-2 rounded">Submit</button
+        > -->
+        <Button
+          on:click={() => {
+            submitPressed = true;
+            handleSubmit();
+            submitPressed = false;
+          }}
+          class="bg-sky-500 hover:bg-sky-500/90"
         >
-        <span>
-          <button
-            type="button"
-            class="bg-sky-500 text-white p-2 rounded"
-            on:click={onFileButtonClicked}
-          >
+          {#if isLoading}
+            <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+          {/if}
+          Submit
+        </Button>
+        <!-- <span> -->
+        <input
+          bind:this={fileInput}
+          type="file"
+          accept="application/json"
+          on:change={loadConfig}
+          class="hidden"
+        />
+        {#if !USE_FILE_MENU}
+          <Button class="bg-sky-500 hover:bg-sky-500/90" on:click={onFileButtonClicked}>
+            <Upload class="mr-2 h-4 w-4" />
             Load Config
-          </button>
-          <input
-            bind:this={fileInput}
-            type="file"
-            accept="application/json"
-            on:change={loadConfig}
-            class="hidden"
-          />
-        </span>
+          </Button>
 
-        <button type="submit" class="bg-sky-500 text-white p-2 rounded" on:click={downloadConfig}
-          >Download Config</button
-        >
-        {#if imageURL}
-          <button on:click={downloadZip} class=" bg-sky-500 text-white p-2 rounded"
-            >Download Results Zip</button
-          >
+          <!-- </span> -->
+
+          <Button type="submit" class="bg-sky-500 hover:bg-sky-500/90" on:click={downloadConfig}>
+            <Download class="mr-2 h-4 w-4" />
+            Download Config
+          </Button>
+
+          {#if imageURL}
+            <Button on:click={downloadZip} class="bg-sky-500 hover:bg-sky-500/90">
+              <Download class="mr-2 h-4 w-4" />
+              Download Results Zip
+            </Button>
+          {/if}
         {/if}
       </div>
     </div>
@@ -484,7 +603,7 @@
       <!-- Link and citation buttons -->
       <div class="flex flex-row float-right">
         <a
-          href="https://www.github.com/jfuruness/bgpy_pkg"
+          href="https://github.com/jfuruness/bgpy_pkg/wiki"
           target="_blank"
           class="p-2 rounded-full hover:bg-gray-200"
         >
@@ -503,7 +622,16 @@
         </button>
       </div>
 
-      <Graph {nodes} {edges} {simulationResults} bind:cpLinks bind:peerLinks />
+      <Graph
+        {nodes}
+        {edges}
+        {simulationResults}
+        bind:this={graphComponent}
+        bind:showModal={showAddASModal}
+        bind:showClearGraphModal
+        bind:cpLinks
+        bind:peerLinks
+      />
     </div>
   </div>
 

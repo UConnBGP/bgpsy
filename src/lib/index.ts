@@ -5,6 +5,8 @@ export { exampleConfigs } from './examples';
 
 import type { Graph } from './types';
 
+export const USE_FILE_MENU = true;
+
 export function listToIndexJsonReversed(list: number[][]) {
   const result = {};
   const listLength = list.length;
@@ -16,6 +18,7 @@ export function listToIndexJsonReversed(list: number[][]) {
   });
   return result;
 }
+
 export function getPropagationRanks(graph: Graph) {
   // const graph = config.graph;
   let asDict = new Map();

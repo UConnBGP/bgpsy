@@ -2,13 +2,22 @@
   import { onMount, onDestroy } from 'svelte';
   import { Network, DataSet } from 'vis-network/standalone/esm/vis-network';
   import Modal from './Modal.svelte';
-  import { getPropagationRanks } from '$lib';
+  import { USE_FILE_MENU, getPropagationRanks } from '$lib';
+  import Button from '$lib/components/ui/button/button.svelte';
+  import { Ban, Plus } from 'lucide-svelte';
+  import * as ContextMenu from '$lib/components/ui/context-menu';
+  import * as Dialog from '$lib/components/ui/dialog';
+  import * as AlertDialog from '$lib/components/ui/alert-dialog';
+  import { Input } from '$lib/components/ui/input';
+  import { Label } from '$lib/components/ui/label';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
   export let simulationResults: {} | null;
   export let cpLinks: number[][];
   export let peerLinks: number[][];
+  export let showModal: boolean;
+  export let showClearGraphModal: boolean;
 
   //   // Options for the network
   //   const options = {
@@ -52,7 +61,7 @@
   let selectedLinkID = null;
   let selectedASN2 = null;
   let selectedLinkID2 = null;
-  let showModal = false;
+  // let showModal = false;
   let showAddEdgeModal = false;
   let showConfirmAddEdgeModal = false;
   let newNodeId;
@@ -315,14 +324,14 @@
     });
   }
 
-  function addCPLink() {
+  export function addCPLink() {
     network.addEdgeMode();
     newLinkType = 'customer-provider';
     // network.setOptions({ ...options, interaction: { hover: false } });
     addingEdge = true;
   }
 
-  function addPeerLink() {
+  export function addPeerLink() {
     network.addEdgeMode();
     newLinkType = 'peer';
     // network.setOptions({ ...options, interaction: { hover: false } });
@@ -490,7 +499,7 @@
   }
 </script>
 
-<Modal bind:showModal on:close={() => (showModal = false)}>
+<!-- <Modal bind:showModal on:close={() => (showModal = false)}>
   <div slot="header" class="text-sm font-medium leading-6 mb-2">Add AS</div>
   <input
     type="number"
@@ -499,7 +508,41 @@
     class="p-1 border border-gray-300 rounded"
   />
   <button on:click={addNode} class="bg-emerald-500 text-white p-2 rounded">Add</button>
-</Modal>
+</Modal> -->
+
+<!-- Add AS Modal -->
+<Dialog.Root bind:open={showModal}>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Add AS</Dialog.Title>
+    </Dialog.Header>
+    <div class="grid grid-cols-5 items-center gap-4">
+      <Label class="text-left">AS Number</Label>
+      <Input bind:value={newNodeId} class="col-span-4 focus-visible:ring-0" />
+    </div>
+    <Dialog.Footer>
+      <Button on:click={addNode} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Clear Graph Confirmation Modal -->
+<AlertDialog.Root bind:open={showClearGraphModal}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Are you sure?</AlertDialog.Title>
+      <AlertDialog.Description>
+        Clearing the graph will remove all ASes and links. This cannot be undone.
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action on:click={clearGraph} class="bg-destructive hover:bg-destructive/90">
+        Continue
+      </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
 
 <Modal bind:showModal={showAddEdgeModal} on:close={() => (showAddEdgeModal = false)}>
   <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Connection</div>
@@ -572,19 +615,40 @@
 </Modal>
 
 <h2 class="text-sm font-medium leading-6 mb-2">Graph</h2>
-<button on:click={() => (showModal = true)} class="bg-emerald-500 text-white p-2 rounded"
-  >Add AS</button
->
-<button on:click={addCPLink} class="bg-emerald-500 text-white p-2 rounded">Add CP Link</button>
-<button on:click={addPeerLink} class="bg-emerald-500 text-white p-2 rounded">Add Peer Link</button>
 
-<!-- <button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
+<!-- Action Button -->
+{#if !USE_FILE_MENU}
+  <div class="flex space-x-2">
+    <Button
+      on:click={() => (showModal = true)}
+      class="bg-emerald-500 hover:bg-emerald-500/90"
+      size="sm"
+    >
+      <!-- <Plus class="mr-2 h-4 w-4" /> -->
+      Add AS
+    </Button>
+    <Button on:click={addCPLink} class="bg-emerald-500 hover:bg-emerald-500/90" size="sm">
+      <!-- <Plus class="mr-2 h-4 w-4" /> -->
+      Add Customer-Provider Link
+    </Button>
+    <Button on:click={addPeerLink} class="bg-emerald-500 hover:bg-emerald-500/90" size="sm">
+      <!-- <Plus class="mr-2 h-4 w-4" /> -->
+      Add Peer Link
+    </Button>
+
+    <!-- <button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
   >Add Customer-Provider Link</button
 >
 <button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
   >Add Peer-Peer Link</button
 > -->
-<button on:click={clearGraph} class="bg-red-500 text-white p-2 rounded">Clear Graph</button>
+    <!-- <Button on:click={clearGraph} variant="destructive"> -->
+    <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
+      <Ban class="mr-2 h-4 w-4" />
+      Clear Graph
+    </Button>
+  </div>
+{/if}
 
 <!-- Graph -->
 <div bind:this={container} class="mt-2 w-full" style="height: 35rem"></div>
@@ -682,6 +746,24 @@
       {/if}
     </ul>
   </div>
+
+  <!-- <ContextMenu.Root>
+    <ContextMenu.Trigger />
+    <ContextMenu.Content
+      style="positon:absolute; left: {contextMenuData.x}px; top: {contextMenuData.y}px;"
+    >
+      {#if selectedASN2 !== null}
+        <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
+          >Delete Node</ContextMenu.Item
+        >
+      {/if}
+      {#if selectedLinkID2 !== null}
+        <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
+          >Delete Edge</ContextMenu.Item
+        >
+      {/if}
+    </ContextMenu.Content>
+  </ContextMenu.Root> -->
 {/if}
 
 <style>
