@@ -253,9 +253,9 @@
       }
     });
 
-    let propgationRounds = 1;
+    let propagationRounds = 1;
     if (config.scenario === 'AccidentalRouteLeak') {
-      propgationRounds = 2;
+      propagationRounds = 2;
     }
 
     config = {
@@ -263,7 +263,7 @@
       attacker_asns: attackerASNs,
       victim_asns: victimASNs,
       asn_policy_map: asnPolicyMap,
-      propagation_rounds: propgationRounds,
+      propagation_rounds: propagationRounds,
       graph: {
         ...config.graph,
         cp_links: cpLinks,

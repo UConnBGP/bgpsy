@@ -2,8 +2,8 @@ import type { Config } from './types';
 
 export const exampleConfigs: Record<string, Config> = {
   'Subprefix Hijack': {
-    name: 'Config 1',
-    desc: 'BGP hidden hijack (with simple AS)',
+    name: 'Subprefix Hijack',
+    desc: 'Subprefix hijack with normal ASes',
     scenario: 'SubprefixHijack',
     scenario_modifier: null,
     announcements: [],
@@ -49,8 +49,8 @@ export const exampleConfigs: Record<string, Config> = {
       ]
     }
   },
-  'BGP Proagation': {
-    name: 'Config 3',
+  'BGP Propagation': {
+    name: 'BGP Propagation',
     desc: 'Basic BGP propagation (with normal BGP AS)',
     scenario: 'ValidPrefix',
     scenario_modifier: null,
@@ -70,7 +70,7 @@ export const exampleConfigs: Record<string, Config> = {
     }
   },
   'Valley Free (Gao Rexford) with ROV': {
-    name: 'Config 36',
+    name: 'Gao Rexford',
     desc: 'Valley Free (Gao Rexford) demonstration',
     scenario: 'SubprefixHijack',
     scenario_modifier: null,
@@ -108,7 +108,7 @@ export const exampleConfigs: Record<string, Config> = {
     }
   },
   'Accidental Route Leak with OTC': {
-    name: 'ex_019_route_leak_otc_simple',
+    name: 'Accidental Route Leak with OTC',
     desc: 'Accidental route leak against Only To Customers. This policy sets the only_to_customers attribute specified in RFC 9234, which protects against simple route leaks.',
     scenario: 'AccidentalRouteLeak',
     scenario_modifier: null,
@@ -150,8 +150,8 @@ export const exampleConfigs: Record<string, Config> = {
     }
   },
   'Origin Prefix Hijack with Pathend': {
-    name: 'ex_015_origin_prefix_hijack_pathend_simple',
-    desc: 'Origin prefix hijack with pathend simple\nPathend checks the end of the path for valid providers\nand is thus protected against simple origin hijacks',
+    name: 'Origin Prefix Hijack with Pathend',
+    desc: 'Origin prefix hijack with pathend simple.\nPathend checks the end of the path for valid providers\nand is thus protected against simple origin hijacks',
     scenario: 'PrefixHijack',
     scenario_modifier: 'origin_hijack',
     base_policy: null,
@@ -162,6 +162,57 @@ export const exampleConfigs: Record<string, Config> = {
       '1': 'pathend',
       '777': 'pathend'
     },
+    graph: {
+      cp_links: [
+        [1, 666],
+        [2, 666],
+        [2, 777],
+        [4, 777],
+        [5, 1],
+        [8, 1],
+        [8, 2],
+        [9, 4],
+        [10, 777],
+        [11, 8],
+        [11, 9],
+        [11, 10],
+        [12, 10]
+      ],
+      peer_links: [
+        [8, 9],
+        [9, 10],
+        [3, 9]
+      ],
+      propagation_ranks: [
+        [666, 777],
+        [1, 2, 3, 4],
+        [5, 8, 9, 10],
+        [11, 12]
+      ]
+    }
+  },
+  'Shortest Path Export All with ASPA': {
+    name: 'Shortest Path Export All with ASPA',
+    desc: 'Shortest path export all against ASPA from a peer AS prevents the attack',
+    scenario: 'PrefixHijack',
+    scenario_modifier: 'shortest_path_export_all_hijack',
+    base_policy: null,
+    adopt_policy: 'aspa',
+    announcements: [],
+    attacker_asns: [666],
+    victim_asns: [777],
+    asn_policy_map: {
+      '2': 'aspa',
+      '4': 'aspa',
+      '5': 'aspa',
+      '8': 'aspa',
+      '9': 'aspa',
+      '10': 'aspa',
+      '11': 'aspa',
+      '12': 'aspa',
+      '777': 'aspa'
+    },
+    propagation_rounds: 1,
     graph: {
       cp_links: [
         [1, 666],
