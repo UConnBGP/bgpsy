@@ -237,7 +237,7 @@
     <label for="scenario" class="block text-sm font-medium leading-6 mb-2">Scenario</label>
     <select
       bind:value={config.scenario}
-      class="p-2 border border-gray-300 rounded w-full"
+      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
       on:change={() => {
         if (config.scenario !== null) {
           config.announcements = [];
@@ -280,10 +280,12 @@
   <!-- Show attack modifier when custom scenario is selected -->
   {#if config.scenario !== null}
     <div>
-      <label for="scenario" class="block text-sm font-medium leading-6 mb-2">Attack Modifier</label>
+      <label for="attack-modifier" class="block text-sm font-medium leading-6 mb-2"
+        >Attack Modifier</label
+      >
       <select
         bind:value={config.scenario_modifier}
-        class="p-2 border border-gray-300 rounded w-full"
+        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
       >
         <option value={null}>None</option>
         <option value="origin_hijack">Origin Hijack</option>
