@@ -1,15 +1,15 @@
 <script lang="ts">
-  import type { Announcement, Config } from '$lib';
-  import * as Table from '../lib/components/ui/table';
-  import * as Dialog from '../lib/components/ui/dialog';
-  import * as DropdownMenu from '../lib/components/ui/dropdown-menu';
-  import * as Select from '../lib/components/ui/select';
-  import { Input } from '../lib/components/ui/input';
-  import { Label } from '../lib/components/ui/label';
-  import { Button } from '../lib/components/ui/button';
-  import { Switch } from '../lib/components/ui/switch';
-  import { Checkbox } from '../lib/components/ui/checkbox';
-  import { isAnnouncementEmpty } from '$lib/utils';
+  import type { Announcement, Config } from '../types';
+  import * as Table from './ui/table';
+  import * as Dialog from './ui/dialog';
+  import * as DropdownMenu from './ui/dropdown-menu';
+  import * as Select from './ui/select';
+  import { Input } from './ui/input';
+  import { Label } from './ui/label';
+  import { Button } from './ui/button';
+  import { Switch } from './ui/switch';
+  import { Checkbox } from './ui/checkbox';
+  import { isAnnouncementEmpty } from '../utils';
   import { X, Check, Pencil, Trash2, Plus, MoreHorizontal } from 'lucide-svelte';
 
   export let config: Config;
@@ -111,15 +111,11 @@
     <div class="grid gap-4 py-4">
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right">Prefix</Label>
-        <Input bind:value={newAnnouncement.prefix} class="col-span-2 focus-visible:ring-0" />
+        <Input bind:value={newAnnouncement.prefix} class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right">Seed ASN</Label>
-        <Input
-          bind:value={newAnnouncement.seed_asn}
-          type="number"
-          class="col-span-2 focus-visible:ring-0"
-        />
+        <Input bind:value={newAnnouncement.seed_asn} type="number" class="col-span-2" />
       </div>
 
       <div class="grid grid-cols-3 items-center gap-4 my-1">
@@ -135,7 +131,7 @@
           <Label class="text-right">AS Path</Label>
           <Input
             value={newAnnouncement.as_path.join(', ')}
-            class="col-span-2 focus-visible:ring-0"
+            class="col-span-2"
             on:input={(e) => updateASPath2(newAnnouncement, e.target.value)}
           />
         </div>
@@ -152,11 +148,7 @@
       {#if !newAnnouncementCalculateROA}
         <div class="grid grid-cols-3 items-center gap-4">
           <Label class="text-right col-span-1">ROA Origin ASN</Label>
-          <Input
-            bind:value={newAnnouncement.roa_origin}
-            type="number"
-            class="col-span-2 focus-visible:ring-0"
-          />
+          <Input bind:value={newAnnouncement.roa_origin} type="number" class="col-span-2" />
         </div>
         <div class="grid grid-cols-3 items-center gap-4">
           <Label class="text-right col-span-1">ROA Valid Length?</Label>
@@ -182,31 +174,23 @@
     <div class="grid gap-4 py-4">
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right">Prefix</Label>
-        <Input bind:value={selectedAnnouncement.prefix} class="col-span-2 focus-visible:ring-0" />
+        <Input bind:value={selectedAnnouncement.prefix} class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right">Seed ASN</Label>
-        <Input
-          bind:value={selectedAnnouncement.seed_asn}
-          type="number"
-          class="col-span-2 focus-visible:ring-0"
-        />
+        <Input bind:value={selectedAnnouncement.seed_asn} type="number" class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right">AS Path</Label>
         <Input
           value={selectedAnnouncement.as_path.join(', ')}
-          class="col-span-2 focus-visible:ring-0"
+          class="col-span-2"
           on:input={(e) => updateASPath2(selectedAnnouncement, e.target.value)}
         />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right col-span-1">ROA Origin ASN</Label>
-        <Input
-          bind:value={selectedAnnouncement.roa_origin}
-          type="number"
-          class="col-span-2 focus-visible:ring-0"
-        />
+        <Input bind:value={selectedAnnouncement.roa_origin} type="number" class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right col-span-1">ROA Valid Length?</Label>
@@ -245,7 +229,7 @@
       class="p-2 border border-gray-300 rounded w-full"
       id="destination"
     /> -->
-    <Input type="text" bind:value={config.desc} placeholder="Description" id="destination" />
+    <Input type="text" bind:value={config.desc} placeholder="Description" id="desc" />
   </div>
 
   <!-- Scenario -->
@@ -312,27 +296,18 @@
   {#if config.scenario === null}
     <div>
       <div class="flex justify-between mb-1">
-        <label class="block text-sm font-medium leading-6 mb-2">Announcements</label>
-        <button
-          type="button"
-          on:click={() => (showAddAnnouncementModal = true)}
-          class="bg-emerald-500 hover:bg-emerald-500/90 text-white rounded-full h-6 w-6 flex items-center justify-center"
+        <label for="add-announcement" class="block text-sm font-medium leading-6 mb-2"
+          >Announcements</label
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-        </button>
+        <Button
+          id="add-announcement"
+          size="icon"
+          variant="ghost"
+          class="bg-emerald-500 hover:bg-emerald-500/90 rounded-full size-6 text-white hover:text-accent-background"
+          on:click={() => (showAddAnnouncementModal = true)}
+        >
+          <Plus class="size-4" />
+        </Button>
       </div>
 
       <!-- {#each config.announcements as announcement, index}
@@ -435,9 +410,9 @@
               <Table.Cell>{announcement.roa_origin}</Table.Cell>
               <Table.Cell>
                 {#if announcement.roa_valid_length}
-                  <Check class="h-4 w-4" color="green" />
+                  <Check class="size-4" color="green" />
                 {:else}
-                  <X class="h-4 w-4" color="red" />
+                  <X class="size-4" color="red" />
                 {/if}
               </Table.Cell>
               <Table.Cell>
@@ -490,7 +465,7 @@
                           showEditAnnouncementModal = true;
                         }}
                       >
-                        <Pencil class="mr-2 h-4 w-4" />
+                        <Pencil class="mr-2 size-4" />
                         <span>Edit</span>
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
@@ -500,7 +475,7 @@
                         }}
                         class="text-destructive data-[highlighted]:text-destructive"
                       >
-                        <Trash2 class="mr-2 h-4 w-4" />
+                        <Trash2 class="mr-2 size-4" />
                         <span>Delete</span>
                       </DropdownMenu.Item>
                     </DropdownMenu.Group>

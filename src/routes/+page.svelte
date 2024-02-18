@@ -1,11 +1,11 @@
 <script lang="ts">
   import { DataSet } from 'vis-network/standalone/esm/vis-network';
-  import ConfigForm from '../components/config-form.svelte';
-  import Graph from '../components/graph.svelte';
+  import ConfigForm from '$lib/components/config-form.svelte';
+  import Graph from '../lib/components/graph.svelte';
   import { USE_FILE_MENU, type Config } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
-  import CitationModal from '../components/citation-model.svelte';
-  import ErrorBanner from '../components/error-banner.svelte';
+  import CitationModal from '$lib/components/citation-model.svelte';
+  import ErrorBanner from '$lib/components/error-banner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import {
@@ -17,11 +17,16 @@
     Save,
     FolderClosed,
     Plus,
-    Ban
+    Ban,
+    AlertCircle,
+    AlertTriangle,
+    X
   } from 'lucide-svelte';
-  import { Button } from '../lib/components/ui/button';
-  import * as DropdownMenu from '../lib/components/ui/dropdown-menu';
-  import * as Menubar from '../lib/components/ui/menubar';
+  import { Button } from '$lib/components/ui/button';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+  import * as Menubar from '$lib/components/ui/menubar';
+  import * as Alert from '$lib/components/ui/alert';
+  import * as Accordion from '$lib/components/ui/accordion';
 
   // State
   let nodes = new DataSet([]);
@@ -420,16 +425,16 @@
         <Menubar.Trigger>File</Menubar.Trigger>
         <Menubar.Content>
           <Menubar.Item on:click={onFileButtonClicked}>
-            <FolderClosed class="mr-2 h-4 w-4" />
+            <FolderClosed class="mr-2 size-4" />
             <span>Open Config</span>
           </Menubar.Item>
           <Menubar.Item on:click={downloadConfig}>
-            <Save class="mr-2 h-4 w-4" />
+            <Save class="mr-2 size-4" />
             <span>Save Config</span>
           </Menubar.Item>
           <Menubar.Separator />
           <Menubar.Item disabled={imageURL === ''} on:click={downloadZip}>
-            <Download class="mr-2 h-4 w-4" />
+            <Download class="mr-2 size-4" />
             <span>Download Results Zip</span>
           </Menubar.Item>
         </Menubar.Content>
@@ -452,7 +457,7 @@
           </Menubar.Item>
           <Menubar.Separator />
           <Menubar.Item on:click={() => (showClearGraphModal = true)}>
-            <Ban class="mr-2 h-4 w-4" />
+            <Ban class="mr-2 size-4" />
             <span>Clear Graph</span>
           </Menubar.Item>
         </Menubar.Content>
@@ -471,55 +476,40 @@
     </Menubar.Root>
   {/if}
 
+  <!-- Banner for errors -->
   <ErrorBanner message={errorMessage} bind:showBanner />
+
+  <!-- {#if showBanner}
+  <Alert.Root variant="destructive" class="mb-4"> -->
+  <!-- <AlertTriangle class="h-4 w-4" /> -->
+  <!-- <Alert.Title>Error</Alert.Title> -->
+  <!-- <Alert.Description>{errorMessage}</Alert.Description> -->
+  <!-- <Alert.Description class="text-sm font-normal"
+      >Failed to connect to the server</Alert.Description
+    > -->
+  <!-- <div class="flex">
+      <div class="flex-shrink-0 mt-0.5">
+        <AlertTriangle class="size-4" />
+      </div>
+      <div class="flex-1 flex justify-between ms-2">
+        <p class="text-sm">Failed to connect to the server</p>
+        <Button
+          class="hover:bg-red-100 size-4"
+          size="icon"
+          variant="ghost"
+          on:click={() => (showBanner = false)}
+        >
+          <X class="size-4" />
+        </Button>
+      </div>
+    </div> -->
+  <!-- </Alert.Root>
+  {/if} -->
 
   <!-- Two columns for form and graph -->
   <div class="flex md:flex-row flex-col space-x-4">
     <div class="basis-1/2 order-2 md:order-1">
       <!-- Examples dropdown -->
-      <!-- <div class="relative dropdow mb-4">
-        <button
-          id="dropdownDefaultButton"
-          on:click={() => (isDropdownOpen = !isDropdownOpen)}
-          class="text-white bg-indigo-500 rounded text-sm px-3 py-2.5 text-center inline-flex items-center"
-          type="button"
-        >
-          Examples
-          <svg
-            class="w-2.5 h-2.5 ms-3"
-            aria-hidden="true"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 10 6"
-          >
-            <path
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="m1 1 4 4 4-4"
-            />
-          </svg>
-        </button>
-
-        {#if isDropdownOpen}
-          <div class="absolute z-10 bg-white divide-y divide-gray-100 rounded-lg shadow w-45">
-            <ul class="py-2 text-sm text-gray-700">
-              {#each Object.keys(exampleConfigs) as configName}
-                <li class="hover:bg-gray-100">
-                  <button
-                    class="block px-4 py-2"
-                    on:click={() => loadExampleConfig(exampleConfigs[configName])}
-                  >
-                    {configName}
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-      </div> -->
-
       {#if !USE_FILE_MENU}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild let:builder>
@@ -529,7 +519,7 @@
               size="sm"
             >
               Examples
-              <ChevronDown class="ml-2 h-4 w-4" />
+              <ChevronDown class="ml-2 size-4" />
             </Button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
@@ -544,16 +534,8 @@
 
       <ConfigForm {config} {handleSubmit} />
 
-      <div class="mt-4 flex space-x-2">
-        <!-- <button
-          type="submit"
-          on:click={() => {
-            submitPressed = true;
-            handleSubmit();
-            submitPressed = false;
-          }}
-          class="bg-sky-500 text-white p-2 rounded">Submit</button
-        > -->
+      <div class="mt-4 flex space-x-2 items-center">
+        <!-- Submit button -->
         <Button
           on:click={() => {
             submitPressed = true;
@@ -563,11 +545,11 @@
           class="bg-sky-500 hover:bg-sky-500/90"
         >
           {#if isLoading}
-            <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 class="mr-2 size-4 animate-spin" />
           {/if}
           Submit
         </Button>
-        <!-- <span> -->
+
         <input
           bind:this={fileInput}
           type="file"
@@ -576,24 +558,29 @@
           class="hidden"
         />
         {#if !USE_FILE_MENU}
+          <!-- Load config button -->
           <Button class="bg-sky-500 hover:bg-sky-500/90" on:click={onFileButtonClicked}>
-            <Upload class="mr-2 h-4 w-4" />
+            <Upload class="mr-2 size-4" />
             Load Config
           </Button>
 
-          <!-- </span> -->
-
+          <!-- Download config button -->
           <Button type="submit" class="bg-sky-500 hover:bg-sky-500/90" on:click={downloadConfig}>
-            <Download class="mr-2 h-4 w-4" />
+            <Download class="mr-2 size-4" />
             Download Config
           </Button>
 
-          {#if imageURL}
-            <Button on:click={downloadZip} class="bg-sky-500 hover:bg-sky-500/90">
-              <Download class="mr-2 h-4 w-4" />
-              Download Results Zip
-            </Button>
-          {/if}
+          <!-- Download zip button -->
+          <!-- {#if imageURL} -->
+          <Button
+            on:click={downloadZip}
+            class="bg-sky-500 hover:bg-sky-500/90"
+            disabled={imageURL === ''}
+          >
+            <Download class="mr-2 size-4" />
+            Download Results Zip
+          </Button>
+          <!-- {/if} -->
         {/if}
       </div>
     </div>
@@ -634,11 +621,21 @@
     </div>
   </div>
 
+  <!-- Diagram accordion -->
   {#if imageURL}
-    <details class="mt-4" on:toggle={(event) => (isImageOpen = !isImageOpen)}>
+    <!-- <details class="mt-4" on:toggle={(event) => (isImageOpen = !isImageOpen)}>
       <summary class="text-sm font-medium leading-6 mb-2">Diagram</summary>
       <p><img src={imageURL} alt="System diagram" /></p>
-    </details>
+    </details> -->
+
+    <Accordion.Root>
+      <Accordion.Item value="item-1">
+        <Accordion.Trigger>Diagram</Accordion.Trigger>
+        <Accordion.Content>
+          <p><img src={imageURL} alt="System diagram" /></p>
+        </Accordion.Content>
+      </Accordion.Item>
+    </Accordion.Root>
   {/if}
 
   <CitationModal bind:showModal={showInfo} on:close={() => (showInfo = false)} />

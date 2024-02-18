@@ -2,14 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { Network, DataSet } from 'vis-network/standalone/esm/vis-network';
   import Modal from './modal.svelte';
-  import { USE_FILE_MENU, getPropagationRanks } from '$lib';
-  import Button from '../lib/components/ui/button/button.svelte';
   import { Ban, Plus } from 'lucide-svelte';
-  import * as ContextMenu from '../lib/components/ui/context-menu';
-  import * as Dialog from '../lib/components/ui/dialog';
-  import * as AlertDialog from '../lib/components/ui/alert-dialog';
-  import { Input } from '../lib/components/ui/input';
-  import { Label } from '../lib/components/ui/label';
+  import { USE_FILE_MENU, getPropagationRanks } from '$lib';
+  import * as ContextMenu from './ui/context-menu';
+  import * as Dialog from './ui/dialog';
+  import * as AlertDialog from './ui/alert-dialog';
+  import { Input } from './ui/input';
+  import { Label } from './ui/label';
+  import Button from './ui/button/button.svelte';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
@@ -46,12 +46,9 @@
   //     //   }
   //   };
 
-  let container;
-  let network;
-  // let nodes;
-  // let edges;
-  let options;
-  let nextNodeId = 778;
+  let container: HTMLDivElement;
+  let network: Network;
+  let options: {};
   let selectedAS = null;
   let selectedASN = null;
   let selectedASLevel = null;
@@ -61,7 +58,6 @@
   let selectedLinkID = null;
   let selectedASN2 = null;
   let selectedLinkID2 = null;
-  // let showModal = false;
   let showAddEdgeModal = false;
   let showConfirmAddEdgeModal = false;
   let newNodeId;
@@ -77,7 +73,8 @@
   let contextMenuData = { show: false, x: 0, y: 0 };
   let victimASN = null;
   let newLinkType = null;
-  let addingEdge: bool = false;
+  let addingEdge = false;
+  let rightClick = false;
 
   onMount(() => {
     // Configuration for the network
@@ -167,6 +164,7 @@
       }
 
       contextMenuData.show = false;
+      rightClick = true;
     });
 
     network.on('deselectNode', () => {
@@ -180,22 +178,10 @@
       selectedLinkID = null;
     });
 
-    // network.on('oncontext', function (params) {
-    //   params.event.preventDefault();
-    //   // const selectedNodeId = params.nodes[0];
-    //   // if (selectedNodeId) {
-    //   contextMenuData = {
-    //     show: true,
-    //     x: params.event.pageX,
-    //     y: params.event.pageY
-    //   };
-    //   nodeData = null;
-    //   // }
-    // });
-
     // Right click
     network.on('oncontext', function (params) {
       // params.event.preventDefault();
+      rightClick = true;
       let show = false;
 
       // console.log(network.getNodeAt(network.DOMtoCanvas({ x: event.pageX, y: event.pageY })));
@@ -644,7 +630,7 @@
 > -->
     <!-- <Button on:click={clearGraph} variant="destructive"> -->
     <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
-      <Ban class="mr-2 h-4 w-4" />
+      <Ban class="mr-2 size-4" />
       Clear Graph
     </Button>
   </div>
@@ -735,7 +721,7 @@
   </div>
 {/if}
 
-<!-- {#if contextMenuData.show}
+{#if contextMenuData.show}
   <div class="context-menu" style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
     <ul>
       {#if selectedASN2 !== null}
@@ -746,22 +732,23 @@
       {/if}
     </ul>
   </div>
-{/if} -->
+{/if}
 
-<ContextMenu.Root bind:open={contextMenuData.show}>
+<!-- <ContextMenu.Root bind:open={rightClick}>
+  <ContextMenu.Trigger >Test</ContextMenu.Trigger>
   <ContextMenu.Content>
-    <!-- {#if selectedASN2 !== null} -->
-    <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
-      >Delete Node</ContextMenu.Item
-    >
-    <!-- {/if} -->
-    <!-- {#if selectedLinkID2 !== null} -->
-    <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
-      >Delete Edge</ContextMenu.Item
-    >
-    <!-- {/if} -->
+    {#if selectedASN2 !== null}
+      <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
+        >Delete Node</ContextMenu.Item
+      >
+    {/if}
+    {#if selectedLinkID2 !== null}
+      <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
+        >Delete Edge</ContextMenu.Item
+      >
+    {/if}
   </ContextMenu.Content>
-</ContextMenu.Root>
+</ContextMenu.Root> -->
 
 <style>
   .context-menu {
