@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { Announcement, Config } from '$lib';
-  import * as Table from '$lib/components/ui/table';
-  import * as Dialog from '$lib/components/ui/dialog';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import { Input } from '$lib/components/ui/input';
-  import { Label } from '$lib/components/ui/label';
-  import { Button } from '$lib/components/ui/button';
-  import { Switch } from '$lib/components/ui/switch';
-  import { Checkbox } from '$lib/components/ui/checkbox';
+  import * as Table from '../lib/components/ui/table';
+  import * as Dialog from '../lib/components/ui/dialog';
+  import * as DropdownMenu from '../lib/components/ui/dropdown-menu';
+  import * as Select from '../lib/components/ui/select';
+  import { Input } from '../lib/components/ui/input';
+  import { Label } from '../lib/components/ui/label';
+  import { Button } from '../lib/components/ui/button';
+  import { Switch } from '../lib/components/ui/switch';
+  import { Checkbox } from '../lib/components/ui/checkbox';
   import { isAnnouncementEmpty } from '$lib/utils';
   import { X, Check, Pencil, Trash2, Plus, MoreHorizontal } from 'lucide-svelte';
 
@@ -219,29 +220,32 @@
   </Dialog.Content>
 </Dialog.Root>
 
+<!-- Form -->
 <form class="space-y-4">
   <!-- Name -->
   <div>
     <label for="name" class="block text-sm font-medium leading-6 mb-2">Name</label>
-    <input
+    <!-- <input
       type="text"
       bind:value={config.name}
       placeholder="Name"
       class="p-2 border border-gray-300 rounded w-full"
       id="name"
-    />
+    /> -->
+    <Input type="text" bind:value={config.name} placeholder="Name" id="name" />
   </div>
 
   <!-- Description -->
   <div>
     <label for="desc" class="block text-sm font-medium leading-6 mb-2">Description</label>
-    <input
+    <!-- <input
       type="text"
       bind:value={config.desc}
       placeholder="Description"
       class="p-2 border border-gray-300 rounded w-full"
       id="destination"
-    />
+    /> -->
+    <Input type="text" bind:value={config.desc} placeholder="Description" id="destination" />
   </div>
 
   <!-- Scenario -->
@@ -266,6 +270,27 @@
       <option value="NonRoutedSuperprefixPrefixHijack">Non-Routed Superprefix Prefix Hijack</option>
       <option value="AccidentalRouteLeak">Accidental Route Leak</option>
     </select>
+    <!-- <Select.Root
+      selected={{ value: config.scenario ?? null, label: config.scenario ?? 'foo' }}
+      on:change={() => {}}
+    >
+      <Select.Trigger>
+        <Select.Value placeholder="Scenario" />
+      </Select.Trigger>
+      <Select.Content>
+        <Select.Item value="">Custom Scenario</Select.Item>
+        <Select.Item value="SubprefixHijack">Subprefix Hijack</Select.Item>
+        <Select.Item value="ValidPrefix">Valid Prefix</Select.Item>
+        <Select.Item value="SuperprefixPrefixHijack">Superprefix Prefix Hijack</Select.Item>
+        <Select.Item value="NonRoutedPrefixHijack">Non-Routed Prefix Hijack</Select.Item>
+        <Select.Item value="NonRoutedSuperprefixHijack">Non-Routed Superprefix Hijack</Select.Item>
+        <Select.Item value="NonRoutedSuperprefixPrefixHijack"
+          >Non-Routed Superprefix Prefix Hijack</Select.Item
+        >
+        <Select.Item value="AccidentalRouteLeak">Accidental Route Leak</Select.Item>
+      </Select.Content>
+      <Select.Input />
+    </Select.Root> -->
   </div>
 
   <!-- Show attack modifier when custom scenario is selected -->

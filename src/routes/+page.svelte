@@ -1,15 +1,13 @@
 <script lang="ts">
   import { DataSet } from 'vis-network/standalone/esm/vis-network';
-  import ConfigForm from '../components/ConfigForm.svelte';
-  // import DiagramFetcher from '../components/DiagramFetcher.svelte';
-  import Graph from '../components/Graph.svelte';
+  import ConfigForm from '../components/config-form.svelte';
+  import Graph from '../components/graph.svelte';
   import { USE_FILE_MENU, type Config } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
-  import CitationModal from '../components/CitationModal.svelte';
-  import ErrorBanner from '../components/ErrorBanner.svelte';
+  import CitationModal from '../components/citation-model.svelte';
+  import ErrorBanner from '../components/error-banner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import { Button } from '$lib/components/ui/button';
   import {
     ChevronDown,
     Download,
@@ -21,8 +19,9 @@
     Plus,
     Ban
   } from 'lucide-svelte';
-  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import * as Menubar from '$lib/components/ui/menubar';
+  import { Button } from '../lib/components/ui/button';
+  import * as DropdownMenu from '../lib/components/ui/dropdown-menu';
+  import * as Menubar from '../lib/components/ui/menubar';
 
   // State
   let nodes = new DataSet([]);

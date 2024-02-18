@@ -1,15 +1,15 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Network, DataSet } from 'vis-network/standalone/esm/vis-network';
-  import Modal from './Modal.svelte';
+  import Modal from './modal.svelte';
   import { USE_FILE_MENU, getPropagationRanks } from '$lib';
-  import Button from '$lib/components/ui/button/button.svelte';
+  import Button from '../lib/components/ui/button/button.svelte';
   import { Ban, Plus } from 'lucide-svelte';
-  import * as ContextMenu from '$lib/components/ui/context-menu';
-  import * as Dialog from '$lib/components/ui/dialog';
-  import * as AlertDialog from '$lib/components/ui/alert-dialog';
-  import { Input } from '$lib/components/ui/input';
-  import { Label } from '$lib/components/ui/label';
+  import * as ContextMenu from '../lib/components/ui/context-menu';
+  import * as Dialog from '../lib/components/ui/dialog';
+  import * as AlertDialog from '../lib/components/ui/alert-dialog';
+  import { Input } from '../lib/components/ui/input';
+  import { Label } from '../lib/components/ui/label';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
@@ -735,7 +735,7 @@
   </div>
 {/if}
 
-{#if contextMenuData.show}
+<!-- {#if contextMenuData.show}
   <div class="context-menu" style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
     <ul>
       {#if selectedASN2 !== null}
@@ -746,25 +746,22 @@
       {/if}
     </ul>
   </div>
+{/if} -->
 
-  <!-- <ContextMenu.Root>
-    <ContextMenu.Trigger />
-    <ContextMenu.Content
-      style="positon:absolute; left: {contextMenuData.x}px; top: {contextMenuData.y}px;"
+<ContextMenu.Root bind:open={contextMenuData.show}>
+  <ContextMenu.Content>
+    <!-- {#if selectedASN2 !== null} -->
+    <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
+      >Delete Node</ContextMenu.Item
     >
-      {#if selectedASN2 !== null}
-        <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
-          >Delete Node</ContextMenu.Item
-        >
-      {/if}
-      {#if selectedLinkID2 !== null}
-        <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
-          >Delete Edge</ContextMenu.Item
-        >
-      {/if}
-    </ContextMenu.Content>
-  </ContextMenu.Root> -->
-{/if}
+    <!-- {/if} -->
+    <!-- {#if selectedLinkID2 !== null} -->
+    <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
+      >Delete Edge</ContextMenu.Item
+    >
+    <!-- {/if} -->
+  </ContextMenu.Content>
+</ContextMenu.Root>
 
 <style>
   .context-menu {
