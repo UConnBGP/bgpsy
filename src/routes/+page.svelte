@@ -4,7 +4,7 @@
   import Graph from '../lib/components/graph.svelte';
   import { USE_FILE_MENU, type Config } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
-  import CitationModal from '$lib/components/citation-model.svelte';
+  import CitationModal from '$lib/components/citation-modal.svelte';
   import ErrorBanner from '$lib/components/error-banner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
