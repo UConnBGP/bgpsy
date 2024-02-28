@@ -26,16 +26,18 @@ export const exampleConfigs: Record<string, Config> = {
       {
         prefix: '1.2.0.0/16',
         as_path: [777],
-        seed_asn: 777,
-        roa_valid_length: true,
-        roa_origin: 777
+        seed_asn: 777
       },
       {
         prefix: '1.2.0.0/24',
         as_path: [666],
-        seed_asn: 666,
-        roa_valid_length: false,
-        roa_origin: 777
+        seed_asn: 666
+      }
+    ],
+    roas: [
+      {
+        prefix: '1.2.0.0/16',
+        origin: 777
       }
     ],
     attacker_asns: [666],

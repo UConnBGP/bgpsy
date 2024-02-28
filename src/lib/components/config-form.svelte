@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Announcement, Config } from '../types';
+  import type { Announcement, Config, ROA } from '../types';
   import * as Table from './ui/table';
   import * as Dialog from './ui/dialog';
   import * as DropdownMenu from './ui/dropdown-menu';
@@ -17,33 +17,31 @@
 
   let showAddAnnouncementModal = false;
   let showEditAnnouncementModal = false;
+  let showAddROAModal = false;
+  let showEditROAModal = false;
   let newAnnouncement: Announcement = {
     prefix: '',
     as_path: [],
-    seed_asn: '',
-    roa_valid_length: false,
-    roa_origin: ''
+    seed_asn: ''
+    // roa_valid_length: false,
+    // roa_origin: ''
+  };
+  let newROA: ROA = {
+    prefix: '',
+    origin: ''
   };
   let newAnnouncementCalculateASPath = true;
   let newAnnouncementCalculateROA = true;
   let selectedAnnouncement: Announcement;
   let selectedIndex: number;
+  let selectedROA: ROA;
 
   function addAnnouncement() {
-    if (config.announcements == null) {
+    if (config.announcements === null) {
       config.announcements = [];
     }
-    // let timestamp = 0;
-    // if (config.announcements.length == 1) {
-    //   timestamp = 1;
-    // }
-    // const newAnnouncement: Announcement = {
-    //   prefix: '',
-    //   as_path: [],
-    //   seed_asn: '',
-    //   roa_valid_length: false,
-    //   roa_origin: ''
-    // };
+
+    // Announcement must not be filled in
     if (isAnnouncementEmpty(newAnnouncement)) {
       return;
     }
@@ -58,19 +56,22 @@
       newAnnouncement.as_path.push(newAnnouncement.seed_asn);
     }
 
-    // Create valid ROA
+    // Create corresponding valid ROA
     if (newAnnouncementCalculateROA) {
-      newAnnouncement.roa_origin = newAnnouncement.seed_asn;
-      newAnnouncement.roa_valid_length = true;
+      const roa = {
+        prefix: newAnnouncement.prefix,
+        origin: newAnnouncement.seed_asn
+      };
+      config.roas = [...config.roas, roa];
     }
 
     config.announcements = [...config.announcements, newAnnouncement];
     newAnnouncement = {
       prefix: '',
       as_path: [],
-      seed_asn: '',
-      roa_valid_length: false,
-      roa_origin: ''
+      seed_asn: ''
+      // roa_valid_length: false,
+      // roa_origin: ''
     };
 
     showAddAnnouncementModal = false;
@@ -80,10 +81,41 @@
     newAnnouncementCalculateROA = true;
   }
 
+  function addROA() {
+    if (config.roas === null) {
+      config.roas = [];
+    }
+
+    // ROA must be filled in
+    if (newROA.prefix === '' || newROA.origin === '') {
+      return;
+    }
+
+    // Not sure why I have to do this, TODO: debug
+    newROA.origin = Number(newROA.origin);
+
+    config.roas = [...config.roas, newROA];
+    newROA = {
+      prefix: '',
+      origin: ''
+      // roa_valid_length: false,
+      // roa_origin: ''
+    };
+
+    showAddROAModal = false;
+  }
+
   function saveAnnouncement() {
     config.announcements[selectedIndex] = selectedAnnouncement;
     // config.announcements = config.announcements;
     showEditAnnouncementModal = false;
+  }
+
+  function saveROA() {
+    // Not sure why I have to do this, TODO: debug
+    selectedROA.origin = Number(selectedROA.origin);
+    config.roas[selectedIndex] = selectedROA;
+    showEditROAModal = false;
   }
 
   function updateASPath(index: number, value: string) {
@@ -100,6 +132,21 @@
       .map((asn) => parseInt(asn.trim()))
       .filter((asn) => !isNaN(asn));
   }
+
+  function isAnnouncementValidByRoa(ann: Announcement) {
+    let found = false;
+
+    console.log(config.roas);
+    console.log(ann);
+    config.roas.forEach((roa) => {
+      if (roa.origin === ann.seed_asn && roa.prefix === ann.prefix) {
+        console.log('found');
+        found = true;
+      }
+    });
+
+    return found;
+  }
 </script>
 
 <!-- Add Announcement Modal -->
@@ -114,16 +161,16 @@
         <Input bind:value={newAnnouncement.prefix} class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
-        <Label class="text-right">Seed ASN</Label>
+        <Label class="text-right">Announced By ASN</Label>
         <Input bind:value={newAnnouncement.seed_asn} type="number" class="col-span-2" />
       </div>
 
       <div class="grid grid-cols-3 items-center gap-4 my-1">
-        <Label class="col-span-1 text-right">Calculate AS Path</Label>
+        <Label class="col-span-1 text-right">Define AS Path</Label>
         <Checkbox
           id="terms"
           bind:checked={newAnnouncementCalculateASPath}
-          class="data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+          class="data-[state=checked]:bg-emerald-500 border-emerald-500"
         />
       </div>
       {#if !newAnnouncementCalculateASPath}
@@ -138,14 +185,14 @@
       {/if}
 
       <div class="grid grid-cols-3 items-center gap-4 my-1">
-        <Label class="col-span-1 text-right">Calculate ROA</Label>
+        <Label class="col-span-1 text-right leading-normal">Define Corresponding ROA</Label>
         <Checkbox
           id="terms"
           bind:checked={newAnnouncementCalculateROA}
-          class="data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+          class="data-[state=checked]:bg-emerald-500 border-emerald-500"
         />
       </div>
-      {#if !newAnnouncementCalculateROA}
+      <!-- {#if !newAnnouncementCalculateROA}
         <div class="grid grid-cols-3 items-center gap-4">
           <Label class="text-right col-span-1">ROA Origin ASN</Label>
           <Input bind:value={newAnnouncement.roa_origin} type="number" class="col-span-2" />
@@ -157,7 +204,7 @@
             class="data-[state=checked]:bg-emerald-500"
           />
         </div>
-      {/if}
+      {/if} -->
     </div>
     <Dialog.Footer>
       <Button on:click={addAnnouncement} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
@@ -177,7 +224,7 @@
         <Input bind:value={selectedAnnouncement.prefix} class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
-        <Label class="text-right">Seed ASN</Label>
+        <Label class="text-right">Announced By ASN</Label>
         <Input bind:value={selectedAnnouncement.seed_asn} type="number" class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
@@ -188,18 +235,63 @@
           on:input={(e) => updateASPath2(selectedAnnouncement, e.target.value)}
         />
       </div>
-      <div class="grid grid-cols-3 items-center gap-4">
+      <!-- <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right col-span-1">ROA Origin ASN</Label>
         <Input bind:value={selectedAnnouncement.roa_origin} type="number" class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right col-span-1">ROA Valid Length?</Label>
         <Switch bind:checked={selectedAnnouncement.roa_valid_length} />
-      </div>
+      </div> -->
     </div>
     <Dialog.Footer>
       <Button on:click={() => (showEditAnnouncementModal = false)} variant="outline">Cancel</Button>
       <Button on:click={saveAnnouncement}>Save</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Add ROA -->
+<Dialog.Root bind:open={showAddROAModal}>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Add ROA</Dialog.Title>
+    </Dialog.Header>
+    <div class="grid gap-4 py-4">
+      <div class="grid grid-cols-3 items-center gap-4">
+        <Label class="text-right">Prefix</Label>
+        <Input bind:value={newROA.prefix} class="col-span-2" />
+      </div>
+      <div class="grid grid-cols-3 items-center gap-4">
+        <Label class="text-right">Origin ASN</Label>
+        <Input bind:value={newROA.origin} type="number" class="col-span-2" />
+      </div>
+    </div>
+    <Dialog.Footer>
+      <Button on:click={addROA} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Edit ROA -->
+<Dialog.Root bind:open={showEditROAModal}>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Edit ROA</Dialog.Title>
+    </Dialog.Header>
+    <div class="grid gap-4 py-4">
+      <div class="grid grid-cols-3 items-center gap-4">
+        <Label class="text-right">Prefix</Label>
+        <Input bind:value={selectedROA.prefix} class="col-span-2" />
+      </div>
+      <div class="grid grid-cols-3 items-center gap-4">
+        <Label class="text-right">Origin ASN</Label>
+        <Input bind:value={selectedROA.origin} type="number" class="col-span-2" />
+      </div>
+    </div>
+    <Dialog.Footer>
+      <Button on:click={() => (showEditROAModal = false)} variant="outline">Cancel</Button>
+      <Button on:click={saveROA}>Save</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
@@ -241,6 +333,7 @@
       on:change={() => {
         if (config.scenario !== null) {
           config.announcements = [];
+          config.roas = [];
         }
       }}
     >
@@ -312,95 +405,16 @@
         </Button>
       </div>
 
-      <!-- {#each config.announcements as announcement, index}
-        <hr />
-        <div class="space-y-1 my-4">
-          <div class="flex items-center space-x-10">
-            <label class="text-sm font-medium leading-6">Prefix</label>
-            <input
-              type="text"
-              bind:value={announcement.prefix}
-              placeholder="Prefix"
-              class="p-2 border border-gray-300 rounded flex-grow"
-            />
-          </div>
-
-          <div class="flex items-center space-x-7">
-            <label class="text-sm font-medium leading-6">AS Path</label>
-            <input
-              type="text"
-              value={announcement.as_path.join(', ')}
-              placeholder="AS Path (comma-separated)"
-              class="p-2 border border-gray-300 rounded flex-grow"
-              on:input={(e) => updateASPath(index, e.target.value)}
-            />
-          </div>
-
-          <div class="flex items-center space-x-4">
-            <label class="text-sm font-medium leading-6">Seed ASN</label>
-            <input
-              type="number"
-              bind:value={announcement.seed_asn}
-              placeholder="Seed ASN"
-              class="p-2 border border-gray-300 rounded flex-grow"
-            />
-          </div>
-
-          <div class="flex items-center space-x-2">
-            <label class="text-sm font-medium leading-6">ROA Origin</label>
-            <input
-              type="number"
-              bind:value={announcement.roa_origin}
-              placeholder="ROA Origin"
-              class="p-2 border border-gray-300 rounded flex-grow"
-            />
-          </div>
-
-          <div class="flex justify-between">
-            <label class="inline-flex items-center">
-              <input
-                type="checkbox"
-                on:click|stopPropagation={() => {}}
-                bind:checked={announcement.roa_valid_length}
-                class="form-checkbox h-5 w-5 text-gray-600"
-              />
-              <span class="ml-2 text-gray-700">Is ROA Length Valid?</span>
-            </label>
-            <button
-              type="button"
-              on:click={() => {
-                config.announcements.splice(index, 1);
-                config.announcements = config.announcements;
-              }}
-              class="bg-red-500 text-white rounded-full h-8 w-8 flex items-center justify-center"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                fill="currentColor"
-                viewBox="0 0 16 16"
-              >
-                <path
-                  d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"
-                />
-                <path
-                  d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-      {/each} -->
-
       <Table.Root>
         <Table.Header>
           <Table.Row>
             <Table.Head>Prefix</Table.Head>
-            <Table.Head>Seed ASN</Table.Head>
+            <Table.Head>Announced By ASN</Table.Head>
             <Table.Head>AS Path</Table.Head>
-            <Table.Head>ROA Origin ASN</Table.Head>
-            <Table.Head>ROA Length Valid?</Table.Head>
-            <!-- <Table.Head>Action</Table.Head> -->
+            <Table.Head>Valid by ROA</Table.Head>
+            <!-- <Table.Head>ROA Origin ASN</Table.Head>
+            <Table.Head>ROA Length Valid?</Table.Head> -->
+            <Table.Head>Action</Table.Head>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -409,41 +423,22 @@
               <Table.Cell>{announcement.prefix}</Table.Cell>
               <Table.Cell>{announcement.seed_asn}</Table.Cell>
               <Table.Cell>{announcement.as_path.join(', ')}</Table.Cell>
-              <Table.Cell>{announcement.roa_origin}</Table.Cell>
+              <Table.Cell>
+                {#if isAnnouncementValidByRoa(announcement)}
+                  <Check class="size-4" color="green" />
+                {:else}
+                  <X class="size-4" color="red" />
+                {/if}
+              </Table.Cell>
+              <!-- <Table.Cell>{announcement.roa_origin}</Table.Cell>
               <Table.Cell>
                 {#if announcement.roa_valid_length}
                   <Check class="size-4" color="green" />
                 {:else}
                   <X class="size-4" color="red" />
                 {/if}
-              </Table.Cell>
+              </Table.Cell> -->
               <Table.Cell>
-                <!-- <span class="space-x-1">
-                  <Button
-                    on:click={() => {
-                      selectedAnnouncement = announcement;
-                      selectedIndex = index;
-                      showEditAnnouncementModal = true;
-                    }}
-                    variant="ghost"
-                    size="icon"
-                    class="h-4 w-4"
-                  >
-                    <Pencil class="h-4 w-4" />
-                  </Button>
-                  <Button
-                    on:click={() => {
-                      config.announcements.splice(index, 1);
-                      config.announcements = config.announcements;
-                    }}
-                    variant="ghost"
-                    size="icon"
-                    class="h-4 w-4"
-                  >
-                    <Trash2 class="h-4 w-4" color="red" />
-                  </Button>
-                </span> -->
-
                 <!-- Dropdown menu for actions -->
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger asChild let:builder>
@@ -474,6 +469,91 @@
                         on:click={() => {
                           config.announcements.splice(index, 1);
                           config.announcements = config.announcements;
+                        }}
+                        class="text-destructive data-[highlighted]:text-destructive"
+                      >
+                        <Trash2 class="mr-2 size-4" />
+                        <span>Delete</span>
+                      </DropdownMenu.Item>
+                    </DropdownMenu.Group>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
+    </div>
+  {/if}
+
+  <!-- ROAs -->
+  {#if config.scenario === null}
+    <div>
+      <div class="flex justify-between mb-1">
+        <label for="add-roa" class="block text-sm font-medium leading-6 mb-2">ROAs</label>
+        <Button
+          id="add-roa"
+          size="icon"
+          variant="ghost"
+          class="bg-emerald-500 hover:bg-emerald-500/90 rounded-full size-6 text-white hover:text-accent-background"
+          on:click={() => (showAddROAModal = true)}
+        >
+          <Plus class="size-4" />
+        </Button>
+      </div>
+
+      <Table.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>Prefix</Table.Head>
+            <Table.Head>Origin ASN</Table.Head>
+            <Table.Head>Action</Table.Head>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each config.roas as roa, index}
+            <Table.Row>
+              <Table.Cell>{roa.prefix}</Table.Cell>
+              <Table.Cell>{roa.origin}</Table.Cell>
+              <!-- <Table.Cell>{announcement.roa_origin}</Table.Cell>
+              <Table.Cell>
+                {#if announcement.roa_valid_length}
+                  <Check class="size-4" color="green" />
+                {:else}
+                  <X class="size-4" color="red" />
+                {/if}
+              </Table.Cell> -->
+              <Table.Cell>
+                <!-- Dropdown menu for actions -->
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger asChild let:builder>
+                    <Button
+                      variant="ghost"
+                      builders={[builder]}
+                      size="icon"
+                      class="relative w-7 h-7 p-0"
+                    >
+                      <span class="sr-only">Open menu</span>
+                      <MoreHorizontal class="w-4 h-4" />
+                    </Button>
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="center">
+                    <DropdownMenu.Group>
+                      <DropdownMenu.Label>Actions</DropdownMenu.Label>
+                      <DropdownMenu.Item
+                        on:click={() => {
+                          selectedROA = roa;
+                          selectedIndex = index;
+                          showEditROAModal = true;
+                        }}
+                      >
+                        <Pencil class="mr-2 size-4" />
+                        <span>Edit</span>
+                      </DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        on:click={() => {
+                          config.roas.splice(index, 1);
+                          config.roas = config.roas;
                         }}
                         class="text-destructive data-[highlighted]:text-destructive"
                       >

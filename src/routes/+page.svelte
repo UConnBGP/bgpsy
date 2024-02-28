@@ -35,13 +35,14 @@
     name: '',
     desc: '',
     scenario: null,
-    announcements: []
+    announcements: [],
+    roas: []
     // propagation_rounds: 1
   };
 
   let imageURL = '';
   let prevConfig: Config | null = null;
-  let fileInput; // Reference to the hidden file input
+  let fileInput: HTMLInputElement; // Reference to the hidden file input
   let submitPressed;
   let isImageOpen = false;
   let isDropdownOpen = false;
@@ -88,18 +89,31 @@
     simulationResults = null;
   }
 
-  function loadConfig(event) {
-    const file = event.target.files[0];
-    // console.log(file);
-    if (file && file.type === 'application/json') {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        config = JSON.parse(e.target.result);
-        generateGraph(config);
-        // console.log(config);
-      };
-      reader.readAsText(file);
+  function loadConfig(event: Event) {
+    // Stupid type safety check for TypeScript
+    if (
+      !(event.target instanceof HTMLInputElement) ||
+      event.target.files === null ||
+      event.target.files.length === 0
+    ) {
+      return;
     }
+
+    // Read file as JSON and store it in config
+    const file = event.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (e: ProgressEvent<FileReader>) => {
+      // Another type check
+      if (e.target === null || typeof e.target.result !== 'string') {
+        return;
+      }
+
+      config = JSON.parse(e.target.result);
+      generateGraph(config);
+    };
+    reader.readAsText(file);
+
+    // Reset fileInput so that we can load same file if needed
     fileInput.value = '';
 
     // Reset simulation results
@@ -120,6 +134,10 @@
 
     if (data.announcements === undefined) {
       data.announcements = [];
+    }
+
+    if (data.roas === undefined) {
+      data.roas = [];
     }
 
     if (data.attacker_asns === undefined) {
@@ -190,11 +208,11 @@
           node.policy === 'otc' ||
           node.policy === 'pathend'
         ) {
-          node.shape = 'square';
+          node.shape = 'hexagon';
         }
       }
       if (data.base_policy === 'ROVSimplePolicy') {
-        node.shape = 'square';
+        node.shape = 'hexagon';
       }
       if (data.victim_asns?.includes(asn)) {
         node.role = 'victim';
@@ -399,7 +417,7 @@
     // Create a temporary link to trigger the download
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'config.json'; // Name of the file to be downloaded
+    a.download = `${config.name || 'config'}.json`; // Name file after config name
     document.body.appendChild(a);
     a.click();
 
@@ -552,9 +570,9 @@
 
         <input
           bind:this={fileInput}
+          on:change={loadConfig}
           type="file"
           accept="application/json"
-          on:change={loadConfig}
           class="hidden"
         />
         {#if !USE_FILE_MENU}
@@ -628,7 +646,7 @@
       <p><img src={imageURL} alt="System diagram" /></p>
     </details> -->
 
-    <Accordion.Root>
+    <Accordion.Root class="mt-4">
       <Accordion.Item value="item-1">
         <Accordion.Trigger>Diagram</Accordion.Trigger>
         <Accordion.Content>

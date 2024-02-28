@@ -8,8 +8,13 @@ export type Announcement = {
   prefix: string;
   as_path: number[];
   seed_asn: number;
-  roa_valid_length: boolean;
-  roa_origin: number;
+  // roa_valid_length: boolean;
+  // roa_origin: number;
+};
+
+export type ROA = {
+  prefix: string;
+  origin: number;
 };
 
 export type Config = {
@@ -18,6 +23,7 @@ export type Config = {
   scenario: string | null;
   scenario_modifier?: string | null;
   announcements: Announcement[];
+  roas: ROA[];
   attacker_asns?: number[];
   victim_asns?: number[];
   asn_policy_map?: Record<number, string>;

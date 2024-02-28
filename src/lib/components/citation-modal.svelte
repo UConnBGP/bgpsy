@@ -37,14 +37,15 @@ series = {CSET '23}
       <Dialog.Title>BGPy Citation</Dialog.Title>
     </Dialog.Header>
 
-    <div class="flex overflow-hidden gap-x-1">
-      <pre class="text-sm font-mono overflow-auto my-2">{citation}</pre>
+    <div class="flex overflow-hidden gap-x-1 bg-slate-50 rounded-md text-secondary-foreground">
+      <pre
+        class="text-sm font-mono overflow-auto my-2 ml-2 text-secondary-foreground">{citation}</pre>
 
       <div>
         <Button
           size="icon"
           variant="ghost"
-          class="size-8 my-1"
+          class="size-8 my-1 mr-1"
           on:click={() => {
             copyToClipboard();
           }}

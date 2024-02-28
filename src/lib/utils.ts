@@ -9,10 +9,10 @@ export function isAnnouncementEmpty(ann: Announcement): boolean {
     ann.prefix === '' &&
     ann.as_path.length === 0 &&
     /** @ts-expect-error: seed_asn is not a string  */
-    ann.seed_asn === '' &&
-    ann.roa_valid_length === false &&
+    ann.seed_asn === ''
+    // ann.roa_valid_length === false &&
     /** @ts-expect-error: roa_origin is not a string  */
-    ann.roa_origin === ''
+    // ann.roa_origin === ''
   );
 }
 

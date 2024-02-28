@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Network, DataSet } from 'vis-network/standalone/esm/vis-network';
+  import { Network, DataSet, type Options } from 'vis-network/standalone';
   import Modal from './modal.svelte';
   import { Ban, Plus } from 'lucide-svelte';
   import { USE_FILE_MENU, getPropagationRanks } from '$lib';
@@ -19,36 +19,9 @@
   export let showModal: boolean;
   export let showClearGraphModal: boolean;
 
-  //   // Options for the network
-  //   const options = {
-  //     nodes: {
-  //       shape: 'dot',
-  //       size: 30,
-  //       font: {
-  //         size: 32
-  //       },
-  //       borderWidth: 2
-  //     },
-  //     edges: {
-  //       width: 2
-  //     }
-  //     //   physics: {
-  //     //     forceAtlas2Based: {
-  //     //       gravitationalConstant: -26,
-  //     //       centralGravity: 0.005,
-  //     //       springLength: 230,
-  //     //       springConstant: 0.18
-  //     //     },
-  //     //     maxVelocity: 146,
-  //     //     solver: 'forceAtlas2Based',
-  //     //     timestep: 0.35,
-  //     //     stabilization: { iterations: 150 }
-  //     //   }
-  //   };
-
   let container: HTMLDivElement;
   let network: Network;
-  let options: {};
+  let options: Options;
   let selectedAS = null;
   let selectedASN = null;
   let selectedASLevel = null;
@@ -61,6 +34,8 @@
   let showAddEdgeModal = false;
   let showConfirmAddEdgeModal = false;
   let newNodeId;
+  let newASPolicy = 'bgp';
+  let newASRole = '';
   let newEdgeFrom;
   let newEdgeTo;
   let newPeer1;
@@ -79,6 +54,7 @@
   onMount(() => {
     // Configuration for the network
     options = {
+      // configure: true,
       nodes: {
         shape: 'dot',
         size: 30,
@@ -86,6 +62,9 @@
           size: 20
         },
         borderWidth: 2
+        // color: {
+        //   background: '#38bdf8'
+        // }
       },
       layout: {
         hierarchical: {
@@ -137,7 +116,7 @@
           addingEdge = false;
         }
       },
-      interaction: { hover: true },
+      interaction: { hover: true, zoomSpeed: 0.7 },
       physics: false
     };
 
@@ -261,11 +240,80 @@
       const newNode = {
         id: newNodeId,
         label: String(newNodeId),
-        level: 1 // You can set the level as needed
+        level: 1
       };
+
+      // TODO: Refactor
+      // This code is really, really bad
+      let shape: string | null;
+      if (
+        newASPolicy.toLowerCase() === 'rov' ||
+        newASPolicy.toLowerCase() === 'aspa' ||
+        newASPolicy.toLowerCase() === 'bgpsec' ||
+        newASPolicy.toLowerCase() === 'otc' ||
+        newASPolicy.toLowerCase() === 'pathend'
+      ) {
+        shape = 'hexagon';
+      } else {
+        shape = null;
+      }
+      newNode.policy = newASPolicy;
+      newNode.shape = shape;
+      if (newASRole === 'victim') {
+        newNode.color = { border: '#047857', background: '#34d399' };
+        newNode.role = newASRole;
+      } else if (newASRole === 'attacker') {
+        newNode.color = { border: '#b91c1c', background: '#f87171' };
+        newNode.role = newASRole;
+      }
+
       nodes.add(newNode);
       network.setData({ nodes, edges });
-      newNodeId = ''; // Reset input
+
+      //     function updateASRole() {
+      //   if (selectedASN !== null) {
+      //     let color: {} | null;
+
+      //     if (selectedASRole === 'victim') {
+      //       color = { border: '#047857', background: '#34d399' };
+
+      //       if (victimASN !== null && victimASN !== selectedASN) {
+      //         nodes.update({ id: victimASN, role: null, color: null });
+      //       }
+
+      //       victimASN = selectedASN;
+      //     } else if (selectedASRole === 'attacker') {
+      //       color = { border: '#b91c1c', background: '#f87171' };
+      //     } else {
+      //       color = null;
+      //     }
+      //     nodes.update({ id: selectedASN, role: selectedASRole, color: color });
+      //   }
+      // }
+
+      // function updateASPolicy() {
+      //   if (selectedASN !== null) {
+      //     let shape: string | null;
+      //     if (
+      //       selectedASPolicy.toLowerCase() === 'rov' ||
+      //       selectedASPolicy.toLowerCase() === 'aspa' ||
+      //       selectedASPolicy.toLowerCase() === 'bgpsec' ||
+      //       selectedASPolicy.toLowerCase() === 'otc' ||
+      //       selectedASPolicy.toLowerCase() === 'pathend'
+      //     ) {
+      //       shape = 'hexagon';
+      //     } else {
+      //       shape = null;
+      //     }
+      //     nodes.update({ id: selectedASN, policy: selectedASPolicy, shape: shape });
+      //   }
+      // }
+
+      // Reset input
+      newNodeId = '';
+      newASPolicy = 'bgp';
+      newASRole = '';
+
       showModal = false; // Close modal
     }
   }
@@ -421,7 +469,7 @@
         selectedASPolicy.toLowerCase() === 'otc' ||
         selectedASPolicy.toLowerCase() === 'pathend'
       ) {
-        shape = 'square';
+        shape = 'hexagon';
       } else {
         shape = null;
       }
@@ -502,9 +550,38 @@
     <Dialog.Header>
       <Dialog.Title>Add AS</Dialog.Title>
     </Dialog.Header>
-    <div class="grid grid-cols-5 items-center gap-4">
-      <Label class="text-left">AS Number</Label>
-      <Input bind:value={newNodeId} class="col-span-4 focus-visible:ring-0" />
+    <div class="grid gap-4 py-4">
+      <div class="grid grid-cols-5 items-center gap-4">
+        <Label class="text-right">AS Number</Label>
+        <Input bind:value={newNodeId} class="col-span-4" />
+      </div>
+
+      <div class="grid grid-cols-5 items-center gap-4">
+        <Label class="text-right">Policy</Label>
+        <select
+          bind:value={newASPolicy}
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4"
+        >
+          <option value="bgp">BGP</option>
+          <option value="rov">ROV</option>
+          <option value="aspa">ASPA</option>
+          <option value="bgpsec">BGPSec</option>
+          <option value="otc">Only to Customers</option>
+          <option value="pathend">Pathend</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-5 items-center gap-4">
+        <Label class="text-right">Role</Label>
+        <select
+          bind:value={newASRole}
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4"
+        >
+          <option value="">None</option>
+          <option value="attacker">Attacker</option>
+          <option value="victim">Victim</option>
+        </select>
+      </div>
     </div>
     <Dialog.Footer>
       <Button on:click={addNode} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
@@ -530,7 +607,7 @@
   </AlertDialog.Content>
 </AlertDialog.Root>
 
-<Modal bind:showModal={showAddEdgeModal} on:close={() => (showAddEdgeModal = false)}>
+<!-- <Modal bind:showModal={showAddEdgeModal} on:close={() => (showAddEdgeModal = false)}>
   <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Connection</div>
 
   <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200">
@@ -583,11 +660,10 @@
   {/if}
 
   <button on:click={addEdge} class="bg-emerald-500 text-white p-2 rounded">Add</button>
-</Modal>
+</Modal> -->
 
-<Modal bind:showModal={showConfirmAddEdgeModal} on:close={() => (showConfirmAddEdgeModal = false)}>
+<!-- <Modal bind:showModal={showConfirmAddEdgeModal} on:close={() => (showConfirmAddEdgeModal = false)}>
   <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Edge</div>
-  <!-- <div class="p-1"> -->
   <label>
     <input type="radio" value="customer-provider" bind:group={edgeType} />
     Customer-Provider
@@ -596,9 +672,8 @@
     <input type="radio" value="peer" bind:group={edgeType} />
     Peer-Peer
   </label>
-  <!-- </div> -->
   <button on:click={addEdge2} class="bg-emerald-500 text-white p-2 rounded">Save</button>
-</Modal>
+</Modal> -->
 
 <h2 class="text-sm font-medium leading-6 mb-2">Graph</h2>
 
