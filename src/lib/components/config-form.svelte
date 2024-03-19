@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Announcement, Config, ROA } from '../types';
+  import type { Announcement, AnnouncementValidition, Config, ROA } from '../types';
   import * as Table from './ui/table';
   import * as Dialog from './ui/dialog';
   import * as DropdownMenu from './ui/dropdown-menu';
@@ -10,10 +10,16 @@
   import { Switch } from './ui/switch';
   import { Checkbox } from './ui/checkbox';
   import { isAnnouncementEmpty } from '../utils';
-  import { X, Check, Pencil, Trash2, Plus, MoreHorizontal } from 'lucide-svelte';
+  import X from 'lucide-svelte/icons/x';
+  import Check from 'lucide-svelte/icons/check';
+  import Pencil from 'lucide-svelte/icons/pencil';
+  import Trash2 from 'lucide-svelte/icons/trash-2';
+  import Plus from 'lucide-svelte/icons/plus';
+  import MoreHorizontal from 'lucide-svelte/icons/more-horizontal';
 
   export let config: Config;
   export let handleSubmit: () => Promise<void>;
+  export let annROAStates: string[] = [];
 
   let showAddAnnouncementModal = false;
   let showEditAnnouncementModal = false;
@@ -28,15 +34,20 @@
   };
   let newROA: ROA = {
     prefix: '',
-    origin: ''
+    origin: '',
+    max_length: ''
   };
+
   let newAnnouncementCalculateASPath = true;
   let newAnnouncementCalculateROA = true;
   let selectedAnnouncement: Announcement;
   let selectedIndex: number;
+
+  let newROACalculateLength = true;
+  let selectedROACalculateLength: boolean;
   let selectedROA: ROA;
 
-  function addAnnouncement() {
+  async function addAnnouncement() {
     if (config.announcements === null) {
       config.announcements = [];
     }
@@ -74,6 +85,9 @@
       // roa_origin: ''
     };
 
+    // Update ROA validity
+    annROAStates = await getROAStates();
+
     showAddAnnouncementModal = false;
 
     // Reset
@@ -81,7 +95,7 @@
     newAnnouncementCalculateROA = true;
   }
 
-  function addROA() {
+  async function addROA() {
     if (config.roas === null) {
       config.roas = [];
     }
@@ -94,28 +108,76 @@
     // Not sure why I have to do this, TODO: debug
     newROA.origin = Number(newROA.origin);
 
+    if (newROACalculateLength) {
+      newROA.max_length = null;
+    } else {
+      newROA.max_length = Number(newROA.max_length);
+    }
+    console.log(newROA.max_length);
+
     config.roas = [...config.roas, newROA];
     newROA = {
       prefix: '',
-      origin: ''
+      origin: '',
+      max_length: ''
       // roa_valid_length: false,
       // roa_origin: ''
     };
 
+    // Update ROA validity
+    annROAStates = await getROAStates();
+
     showAddROAModal = false;
+
+    // Reset state
+    newROACalculateLength = true;
   }
 
-  function saveAnnouncement() {
+  async function saveAnnouncement() {
     config.announcements[selectedIndex] = selectedAnnouncement;
     // config.announcements = config.announcements;
+
+    // Update ROA validity
+    annROAStates = await getROAStates();
+
     showEditAnnouncementModal = false;
   }
 
-  function saveROA() {
-    // Not sure why I have to do this, TODO: debug
+  async function saveROA() {
+    // Not sure why I have to do this
+    // TODO: debug
     selectedROA.origin = Number(selectedROA.origin);
+
+    if (
+      selectedROACalculateLength ||
+      selectedROA.max_length === '' ||
+      selectedROA.max_length === undefined ||
+      selectedROA.max_length === null
+    ) {
+      selectedROA.max_length = null;
+    } else {
+      selectedROA.max_length = Number(selectedROA.max_length);
+    }
+    console.log(selectedROA.max_length);
+
     config.roas[selectedIndex] = selectedROA;
+
+    // Update ROA validity
+    annROAStates = await getROAStates();
+
     showEditROAModal = false;
+  }
+
+  async function getROAStates(): Promise<string[]> {
+    // return Promise.all(config.announcements.forEach((ann) => checkAnnValidity));
+    let states = [];
+    for (let ann of config.announcements) {
+      const state = await checkAnnValidity(ann);
+      states.push(state);
+    }
+    // console.log(states);
+
+    return states;
   }
 
   function updateASPath(index: number, value: string) {
@@ -133,6 +195,15 @@
       .filter((asn) => !isNaN(asn));
   }
 
+  function calcMaxLength(roa: ROA): number {
+    // TODO: Add better check
+    if (!roa.prefix.includes('/')) {
+      return 0;
+    }
+    const parts = roa.prefix.split('/');
+    return Number(parts[parts.length - 1]);
+  }
+
   function isAnnouncementValidByRoa(ann: Announcement) {
     let found = false;
 
@@ -146,6 +217,29 @@
     });
 
     return found;
+  }
+
+  async function checkAnnValidity(ann: Announcement): Promise<string> {
+    const validation: AnnouncementValidition = {
+      prefix: ann.prefix,
+      origin: ann.seed_asn,
+      roas: config.roas
+    };
+    try {
+      const response = await fetch('/api/validate-roa', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(validation)
+      });
+      if (!response.ok) {
+        return 'Unknown';
+      }
+      return await response.json();
+    } catch (error) {
+      return 'Unknown';
+    }
   }
 </script>
 
@@ -161,7 +255,7 @@
         <Input bind:value={newAnnouncement.prefix} class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
-        <Label class="text-right">Announced By ASN</Label>
+        <Label class="text-right">Announced by ASN</Label>
         <Input bind:value={newAnnouncement.seed_asn} type="number" class="col-span-2" />
       </div>
 
@@ -224,7 +318,7 @@
         <Input bind:value={selectedAnnouncement.prefix} class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
-        <Label class="text-right">Announced By ASN</Label>
+        <Label class="text-right">Announced by ASN</Label>
         <Input bind:value={selectedAnnouncement.seed_asn} type="number" class="col-span-2" />
       </div>
       <div class="grid grid-cols-3 items-center gap-4">
@@ -257,6 +351,7 @@
     <Dialog.Header>
       <Dialog.Title>Add ROA</Dialog.Title>
     </Dialog.Header>
+
     <div class="grid gap-4 py-4">
       <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right">Prefix</Label>
@@ -266,7 +361,24 @@
         <Label class="text-right">Origin ASN</Label>
         <Input bind:value={newROA.origin} type="number" class="col-span-2" />
       </div>
+
+      <div class="grid grid-cols-3 items-center gap-4 my-1">
+        <Label class="col-span-1 text-right">Calculate Max Length</Label>
+        <Checkbox
+          id="terms"
+          bind:checked={newROACalculateLength}
+          class="data-[state=checked]:bg-emerald-500 border-emerald-500"
+        />
+      </div>
+
+      {#if !newROACalculateLength}
+        <div class="grid grid-cols-3 items-center gap-4">
+          <Label class="text-right">Max Length</Label>
+          <Input bind:value={newROA.max_length} class="col-span-2" type="number" />
+        </div>
+      {/if}
     </div>
+
     <Dialog.Footer>
       <Button on:click={addROA} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
     </Dialog.Footer>
@@ -288,6 +400,17 @@
         <Label class="text-right">Origin ASN</Label>
         <Input bind:value={selectedROA.origin} type="number" class="col-span-2" />
       </div>
+
+      <div class="grid grid-cols-3 items-center gap-4 my-1">
+        <Label class="col-span-1 text-right">Calculate Max Length</Label>
+        <Checkbox id="terms" bind:checked={selectedROACalculateLength} />
+      </div>
+      {#if !selectedROACalculateLength}
+        <div class="grid grid-cols-3 items-center gap-4">
+          <Label class="text-right">Max Length</Label>
+          <Input bind:value={selectedROA.max_length} class="col-span-2" type="number" />
+        </div>
+      {/if}
     </div>
     <Dialog.Footer>
       <Button on:click={() => (showEditROAModal = false)} variant="outline">Cancel</Button>
@@ -389,11 +512,12 @@
 
   <!-- Announcements -->
   {#if config.scenario === null}
-    <div>
-      <div class="flex justify-between mb-1">
-        <label for="add-announcement" class="block text-sm font-medium leading-6 mb-2"
-          >Announcements</label
-        >
+    <div class="py-4">
+      <div class="flex mb-1">
+        <label for="" class="block text-md font-semibold leading-6 mb-2 m-auto">
+          Announcements
+        </label>
+
         <Button
           id="add-announcement"
           size="icon"
@@ -404,14 +528,15 @@
           <Plus class="size-4" />
         </Button>
       </div>
+      <hr />
 
       <Table.Root>
         <Table.Header>
           <Table.Row>
             <Table.Head>Prefix</Table.Head>
-            <Table.Head>Announced By ASN</Table.Head>
+            <Table.Head>Announced by ASN</Table.Head>
             <Table.Head>AS Path</Table.Head>
-            <Table.Head>Valid by ROA</Table.Head>
+            <Table.Head>ROA State</Table.Head>
             <!-- <Table.Head>ROA Origin ASN</Table.Head>
             <Table.Head>ROA Length Valid?</Table.Head> -->
             <Table.Head>Action</Table.Head>
@@ -424,20 +549,39 @@
               <Table.Cell>{announcement.seed_asn}</Table.Cell>
               <Table.Cell>{announcement.as_path.join(', ')}</Table.Cell>
               <Table.Cell>
-                {#if isAnnouncementValidByRoa(announcement)}
-                  <Check class="size-4" color="green" />
+                <!-- {#if isAnnouncementValidByRoa(announcement)}
+                  <span
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none select-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-emerald-500 border-emerald-500"
+                  >
+                    Valid
+                  </span>
                 {:else}
-                  <X class="size-4" color="red" />
+                  <span
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none select-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-destructive border-destructive"
+                  >
+                    Invalid
+                  </span>
+                {/if} -->
+                {#if annROAStates[index] === 'Valid'}
+                  <span
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-emerald-500 border-emerald-500"
+                  >
+                    Valid
+                  </span>
+                {:else if annROAStates[index] === 'Invalid'}
+                  <span
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-destructive border-destructive"
+                  >
+                    Invalid
+                  </span>
+                {:else}
+                  <span
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground"
+                  >
+                    Unknown
+                  </span>
                 {/if}
               </Table.Cell>
-              <!-- <Table.Cell>{announcement.roa_origin}</Table.Cell>
-              <Table.Cell>
-                {#if announcement.roa_valid_length}
-                  <Check class="size-4" color="green" />
-                {:else}
-                  <X class="size-4" color="red" />
-                {/if}
-              </Table.Cell> -->
               <Table.Cell>
                 <!-- Dropdown menu for actions -->
                 <DropdownMenu.Root>
@@ -466,9 +610,11 @@
                         <span>Edit</span>
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
-                        on:click={() => {
+                        on:click={async () => {
                           config.announcements.splice(index, 1);
                           config.announcements = config.announcements;
+                          // Update ROA validity
+                          annROAStates = await getROAStates();
                         }}
                         class="text-destructive data-[highlighted]:text-destructive"
                       >
@@ -488,9 +634,9 @@
 
   <!-- ROAs -->
   {#if config.scenario === null}
-    <div>
+    <div class="pb-4">
       <div class="flex justify-between mb-1">
-        <label for="add-roa" class="block text-sm font-medium leading-6 mb-2">ROAs</label>
+        <label for="" class="block text-md font-semibold leading-6 mb-2 m-auto">ROAs</label>
         <Button
           id="add-roa"
           size="icon"
@@ -501,12 +647,30 @@
           <Plus class="size-4" />
         </Button>
       </div>
+      <hr />
+
+      <!-- <div class="flex mb-1">
+        <label for="" class="block text-sm font-medium leading-6 mb-2 m-auto">
+          Announcements
+        </label>
+
+        <Button
+          id="add-announcement"
+          size="icon"
+          variant="ghost"
+          class="bg-emerald-500 hover:bg-emerald-500/90 rounded-full size-6 text-white hover:text-accent-background"
+          on:click={() => (showAddAnnouncementModal = true)}
+        >
+          <Plus class="size-4" />
+        </Button>
+      </div> -->
 
       <Table.Root>
         <Table.Header>
           <Table.Row>
             <Table.Head>Prefix</Table.Head>
             <Table.Head>Origin ASN</Table.Head>
+            <Table.Head>Max Length</Table.Head>
             <Table.Head>Action</Table.Head>
           </Table.Row>
         </Table.Header>
@@ -515,14 +679,11 @@
             <Table.Row>
               <Table.Cell>{roa.prefix}</Table.Cell>
               <Table.Cell>{roa.origin}</Table.Cell>
-              <!-- <Table.Cell>{announcement.roa_origin}</Table.Cell>
               <Table.Cell>
-                {#if announcement.roa_valid_length}
-                  <Check class="size-4" color="green" />
-                {:else}
-                  <X class="size-4" color="red" />
-                {/if}
-              </Table.Cell> -->
+                {roa.max_length !== null && roa.max_length !== undefined
+                  ? roa.max_length
+                  : calcMaxLength(roa)}
+              </Table.Cell>
               <Table.Cell>
                 <!-- Dropdown menu for actions -->
                 <DropdownMenu.Root>
@@ -544,6 +705,8 @@
                         on:click={() => {
                           selectedROA = roa;
                           selectedIndex = index;
+                          selectedROACalculateLength =
+                            selectedROA.max_length === null || selectedROA.max_length === undefined;
                           showEditROAModal = true;
                         }}
                       >
@@ -551,9 +714,11 @@
                         <span>Edit</span>
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
-                        on:click={() => {
+                        on:click={async () => {
                           config.roas.splice(index, 1);
                           config.roas = config.roas;
+                          // Update ROA validity
+                          annROAStates = await getROAStates();
                         }}
                         class="text-destructive data-[highlighted]:text-destructive"
                       >

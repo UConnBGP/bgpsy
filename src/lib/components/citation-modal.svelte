@@ -1,6 +1,7 @@
 <script>
   import { Button } from './ui/button';
-  import { Check, Copy } from 'lucide-svelte';
+  import Check from 'lucide-svelte/icons/check';
+  import Copy from 'lucide-svelte/icons/copy';
   import * as Dialog from './ui/dialog';
 
   export let showModal = false;

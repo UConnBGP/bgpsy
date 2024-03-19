@@ -1,5 +1,25 @@
 import type { Config } from './types';
 
+export const exampleConfigsMap: Record<string, string> = {
+  'Subprefix Hijack': 'subprefix-hijack',
+  'Subprefix Hijack with Custom Announcements': 'subprefix-hijack-custom-anns',
+  'BGP Propagation': 'bgp-prop',
+  'Valley Free (Gao Rexford) with ROV': 'valley-free',
+  'Accidental Route Leak with OTC': 'accidental-route-leak',
+  'Origin Prefix Hijack with Pathend': 'origin-prefix-hijack',
+  'Shortest Path Export All with ASPA': 'shortest-path-export-all'
+};
+
+export const exampleConfigsMap2: Record<string, string> = {
+  '#subprefix-hijack': 'Subprefix Hijack',
+  '#subprefix-hijack-custom-anns': 'Subprefix Hijack with Custom Announcements',
+  '#bgp-prop': 'BGP Propagation',
+  '#valley-free': 'Valley Free (Gao Rexford) with ROV',
+  '#accidental-route-leak': 'Accidental Route Leak with OTC',
+  '#origin-prefix-hijack': 'Origin Prefix Hijack with Pathend',
+  '#shortest-path-export-all': 'Shortest Path Export All with ASPA'
+};
+
 export const exampleConfigs: Record<string, Config> = {
   'Subprefix Hijack': {
     name: 'Subprefix Hijack',

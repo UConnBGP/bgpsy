@@ -35,11 +35,11 @@
   "type": "module",
   "dependencies": {
     "@viz-js/viz": "^3.2.4",
-    "bits-ui": "^0.18.1",
+    "bits-ui": "^0.18.4",
     "clsx": "^2.1.0",
     "d3-dag": "^1.1.0",
     "gojs": "^2.3.13",
-    "lucide-svelte": "^0.331.0",
+    "lucide-svelte": "^0.343.0",
     "preline": "^2.0.3",
     "tailwind-merge": "^2.2.1",
     "tailwind-variants": "^0.2.0",

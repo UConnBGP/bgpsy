@@ -2,14 +2,14 @@
 	import { Dialog as DialogPrimitive } from "bits-ui";
 	import * as Dialog from ".";
 	import { cn, flyAndScale } from "$lib/utils";
-	import { X } from "lucide-svelte";
+	import X from "lucide-svelte/icons/x";
 
 	type $$Props = DialogPrimitive.ContentProps & {
     hideClose?: boolean;
   };
 
 	let className: $$Props["class"] = undefined;
-  export let hideClose: $$Props['hideClose'] = false;
+	export let hideClose: $$Props['hideClose'] = false;
 	export let transition: $$Props["transition"] = flyAndScale;
 	export let transitionConfig: $$Props["transitionConfig"] = {
 		duration: 200,

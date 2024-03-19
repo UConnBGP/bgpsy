@@ -2,31 +2,26 @@
   import { DataSet } from 'vis-network/standalone/esm/vis-network';
   import ConfigForm from '$lib/components/config-form.svelte';
   import Graph from '../lib/components/graph.svelte';
-  import { USE_FILE_MENU, type Config } from '$lib';
+  import { USE_FILE_MENU, type Config, exampleConfigsMap, exampleConfigsMap2 } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
   import CitationModal from '$lib/components/citation-modal.svelte';
   import ErrorBanner from '$lib/components/error-banner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import {
-    ChevronDown,
-    Download,
-    Loader2,
-    Upload,
-    ArrowDownToLine,
-    Save,
-    FolderClosed,
-    Plus,
-    Ban,
-    AlertCircle,
-    AlertTriangle,
-    X
-  } from 'lucide-svelte';
+  import ChevronDown from 'lucide-svelte/icons/chevron-down';
+  import Download from 'lucide-svelte/icons/download';
+  import Loader2 from 'lucide-svelte/icons/loader-2';
+  import Upload from 'lucide-svelte/icons/upload';
+  import Save from 'lucide-svelte/icons/save';
+  import FolderClosed from 'lucide-svelte/icons/folder-closed';
+  import Ban from 'lucide-svelte/icons/ban';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Menubar from '$lib/components/ui/menubar';
   import * as Alert from '$lib/components/ui/alert';
   import * as Accordion from '$lib/components/ui/accordion';
+  import { getROAStates2 } from '$lib/utils';
+  import Bug from 'lucide-svelte/icons/bug';
 
   // State
   let nodes = new DataSet([]);
@@ -39,6 +34,7 @@
     roas: []
     // propagation_rounds: 1
   };
+  let policyMap: Record<number, string> = {};
 
   let imageURL = '';
   let prevConfig: Config | null = null;
@@ -56,9 +52,12 @@
   let showAddASModal = false;
   let showClearGraphModal = false;
   let graphComponent: Graph;
+  let annROAStates: string[];
 
-  onMount(() => {
-    loadExampleConfig(exampleConfigs['Subprefix Hijack with Custom Announcements']);
+  onMount(async () => {
+    if (!exampleConfigsMap2[$page.url.hash]) {
+      loadExampleConfig(exampleConfigs['Subprefix Hijack with Custom Announcements']);
+    }
   });
 
   $: if ($page.url.searchParams.has('link')) {
@@ -66,6 +65,12 @@
     if (link) {
       fetchConfig(link);
     }
+  }
+
+  // Handle jump link
+  $: if (exampleConfigsMap2[$page.url.hash]) {
+    // console.log($page.url.hash);
+    loadExampleConfig(exampleConfigs[exampleConfigsMap2[$page.url.hash]]);
   }
 
   async function fetchConfig(url: string) {
@@ -120,11 +125,14 @@
     simulationResults = null;
   }
 
-  function loadExampleConfig(example: Config) {
-    config = example;
+  async function loadExampleConfig(example: Config) {
+    config = structuredClone(example);
     generateGraph(config);
     simulationResults = null;
     isDropdownOpen = false;
+
+    // Update ROA validity
+    annROAStates = await getROAStates2(config.announcements, config.roas);
   }
 
   function generateGraph(data: Config) {
@@ -167,7 +175,9 @@
       levels = getPropagationRanks(data.graph);
     }
 
-    const policyMap = data.asn_policy_map || {};
+    policyMap = data.asn_policy_map || {};
+
+    console.log(policyMap);
 
     // Update links after loading from file
     cpLinks = [];
@@ -201,15 +211,15 @@
       };
       if (asn in policyMap) {
         node.policy = policyMap[asn].toLowerCase();
-        if (
-          node.policy === 'rov' ||
-          node.policy === 'aspa' ||
-          node.policy === 'bgpsec' ||
-          node.policy === 'otc' ||
-          node.policy === 'pathend'
-        ) {
-          node.shape = 'hexagon';
-        }
+        //   if (
+        //     node.policy === 'rov' ||
+        //     node.policy === 'aspa' ||
+        //     node.policy === 'bgpsec' ||
+        //     node.policy === 'otc' ||
+        //     node.policy === 'pathend'
+        //   ) {
+        //     node.shape = 'hexagon';
+        //   }
       }
       if (data.base_policy === 'ROVSimplePolicy') {
         node.shape = 'hexagon';
@@ -365,7 +375,7 @@
           // Disconnected
           color = { border: '#737373', background: '#d4d4d4' };
         }
-        console.log(outcome[node.id]);
+        // console.log(outcome[node.id]);
         nodes.update({ ...node, color: color });
       });
     } catch (error) {
@@ -542,7 +552,12 @@
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
             {#each Object.keys(exampleConfigs) as configName}
-              <DropdownMenu.Item on:click={() => loadExampleConfig(exampleConfigs[configName])}>
+              <DropdownMenu.Item
+                href={'#' + exampleConfigsMap[configName]}
+                on:click={() => {
+                  // loadExampleConfig(exampleConfigs[configName])
+                }}
+              >
                 {configName}
               </DropdownMenu.Item>
             {/each}
@@ -550,7 +565,7 @@
         </DropdownMenu.Root>
       {/if}
 
-      <ConfigForm {config} {handleSubmit} />
+      <ConfigForm bind:annROAStates {config} {handleSubmit} />
 
       <div class="mt-4 flex space-x-2 items-center">
         <!-- Submit button -->
@@ -565,7 +580,7 @@
           {#if isLoading}
             <Loader2 class="mr-2 size-4 animate-spin" />
           {/if}
-          Submit
+          Simulate
         </Button>
 
         <input
@@ -617,6 +632,13 @@
             /></svg
           >
         </a>
+        <a
+          href="https://github.com/Arvonit/bgpsy/issues"
+          target="_blank"
+          class="p-2 rounded-full hover:bg-gray-200"
+        >
+          <Bug class="size-6" />
+        </a>
         <button on:click={() => (showInfo = true)} class="p-2 rounded-full hover:bg-gray-200">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
             ><path
@@ -635,6 +657,7 @@
         bind:showClearGraphModal
         bind:cpLinks
         bind:peerLinks
+        bind:policyMap
       />
     </div>
   </div>

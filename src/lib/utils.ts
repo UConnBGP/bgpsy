@@ -2,7 +2,7 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { cubicOut } from 'svelte/easing';
 import type { TransitionConfig } from 'svelte/transition';
-import type { Announcement, Graph } from './types';
+import type { Announcement, AnnouncementValidition, Graph, ROA } from './types';
 
 export function isAnnouncementEmpty(ann: Announcement): boolean {
   return (
@@ -97,6 +97,42 @@ export function getPropagationRanks(graph: Graph) {
 
   // console.log(propagationRanks);
   return propagationRanks;
+}
+
+// TODO: This is duplicate, merge with function in ConfigForm
+export async function getROAStates2(announcements: Announcement[], roas: ROA[]): Promise<string[]> {
+  // return Promise.all(config.announcements.forEach((ann) => checkAnnValidity));
+  const states = [];
+  for (const ann of announcements) {
+    const state = await checkAnnValidity2(ann, roas);
+    states.push(state);
+  }
+  // console.log(states);
+
+  return states;
+}
+
+export async function checkAnnValidity2(ann: Announcement, roas: ROA[]): Promise<string> {
+  const validation: AnnouncementValidition = {
+    prefix: ann.prefix,
+    origin: ann.seed_asn,
+    roas: roas
+  };
+  try {
+    const response = await fetch('/api/validate-roa', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(validation)
+    });
+    if (!response.ok) {
+      return 'Unknown';
+    }
+    return await response.json();
+  } catch (error) {
+    return 'Unknown';
+  }
 }
 
 export function cn(...inputs: ClassValue[]) {

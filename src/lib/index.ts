@@ -2,6 +2,6 @@
 
 export type * from './types';
 export { listToIndexJsonReversed, getPropagationRanks } from './utils';
-export { exampleConfigs } from './examples';
+export { exampleConfigs, exampleConfigsMap, exampleConfigsMap2 } from './examples';
 
 export const USE_FILE_MENU = false;
