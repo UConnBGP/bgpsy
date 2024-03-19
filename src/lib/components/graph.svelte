@@ -298,7 +298,7 @@
         selectedASRole = selectedAS.role || ''; // Get the role of the selected node
         selectedASPolicy = selectedAS.policy || 'bgp';
         selectedASRelationships = getRelationships(selectedASN);
-        console.log('selected AS: ' + selectedAS);
+        // console.log('selected AS: ' + selectedAS);
       } else if (params.edges.length > 0) {
         selectedASN = null;
         selectedAS = null;
@@ -792,8 +792,13 @@
     contextMenuData.show = false;
   }
 
-  function availableNodes(array: any[], index: number) {
-    return nodes.get().filter((node: Node) => !array.includes(node.id) || array[index] === node.id);
+  function availableNodes(array: any[], index: number, asnToIgnore: number | null = null) {
+    // console.log(asnToIgnore);
+    const avail = nodes.get().filter((node: Node) => {
+      return (!array.includes(node.id) || array[index] === node.id) && node.id !== asnToIgnore;
+    });
+    // console.log(avail);
+    return avail;
   }
 
   function getRelationships(asn) {
@@ -1527,7 +1532,7 @@
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
                 >
                   <option value={null}>Select an AS</option>
-                  {#each availableNodes(selectedASRelationships.providers, index) as node}
+                  {#each availableNodes(selectedASRelationships.providers, index, Number(selectedASN)) as node}
                     <option value={node.id}>{node.label || node.id}</option>
                   {/each}
                 </select>
@@ -1569,7 +1574,7 @@
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
                 >
                   <option value={null}>Select an AS</option>
-                  {#each availableNodes(selectedASRelationships.customers, index) as node}
+                  {#each availableNodes(selectedASRelationships.customers, index, Number(selectedASN)) as node}
                     <option value={node.id}>{node.label || node.id}</option>
                   {/each}
                 </select>
@@ -1616,7 +1621,7 @@
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
                 >
                   <option value={null}>Select an AS</option>
-                  {#each availableNodes(selectedASRelationships.peers, index) as node}
+                  {#each availableNodes(selectedASRelationships.peers, index, Number(selectedASN)) as node}
                     <option value={node.id}>{node.label || node.id}</option>
                   {/each}
                 </select>
