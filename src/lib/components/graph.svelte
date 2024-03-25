@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Network, DataSet, type Options, type Node } from 'vis-network/standalone';
-  import Modal from './modal.svelte';
   import Ban from 'lucide-svelte/icons/ban';
   import { USE_FILE_MENU, getPropagationRanks } from '$lib';
   import * as ContextMenu from './ui/context-menu';
@@ -15,7 +14,7 @@
   import * as Tabs from '$lib/components/ui/tabs';
   import * as Card from '$lib/components/ui/card';
   import { ArrowLeftRight, Pencil, Plus, Trash, Trash2 } from 'lucide-svelte';
-  import { flyAndScale } from '$lib/utils';
+  import { countByValue, flyAndScale } from '$lib/utils';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
@@ -40,7 +39,8 @@
   let selectedLinkID2 = null;
   let showAddEdgeModal = false;
   let showRenameASModal = false;
-  let showConfirmAddEdgeModal = false;
+  let showLegend = false;
+  // let showConfirmAddEdgeModal = false;
   let newNodeId;
   let renamedASN: number;
   let newASPolicy = 'bgp';
@@ -58,6 +58,8 @@
   let victimASN = null;
   let newLinkType = null;
   let addingEdge = false;
+  let addingCPLink = false;
+  let addingPeerLink = false;
   let rightClick = false;
   let newASCustomers = [];
   let newASProviders = [];
@@ -165,6 +167,7 @@
           ctx.fillStyle = style.color;
           ctx.fill();
           ctx.strokeStyle = '#003366'; // Dark blue border
+          ctx.lineWidth = selected || hover ? 4 : 2;
           ctx.stroke();
 
           // Draw the node value inside the circle at the top
@@ -241,6 +244,8 @@
             newLinkType = null;
             network.disableEditMode();
             addingEdge = false;
+            addingCPLink = false;
+            addingPeerLink = false;
             return;
           }
 
@@ -278,6 +283,8 @@
           // Re-enable hover
           // network.setOptions({ ...options, interaction: { hover: true } });
           addingEdge = false;
+          addingCPLink = false;
+          addingPeerLink = false;
         }
       },
       interaction: { hover: true, zoomSpeed: 0.7 },
@@ -402,6 +409,10 @@
     nodes.update(selectedAS);
   }
 
+  $: if (simulationResults) {
+    showLegend = true;
+  }
+
   function addNode() {
     if (!newNodeId) {
       return;
@@ -429,10 +440,12 @@
     // newNode.shape = shape;
 
     if (newASRole === 'victim') {
-      newNode.color = { border: '#047857', background: '#34d399' };
+      const colorProp = { border: '#047857', background: '#34d399' };
+      newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
       newNode.role = newASRole;
     } else if (newASRole === 'attacker') {
-      newNode.color = { border: '#b91c1c', background: '#f87171' };
+      const colorProp = { border: '#b91c1c', background: '#f87171' };
+      newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
       newNode.role = newASRole;
     }
 
@@ -565,17 +578,35 @@
   }
 
   export function addCPLink() {
-    network.addEdgeMode();
-    newLinkType = 'customer-provider';
+    if (!addingCPLink) {
+      network.addEdgeMode();
+      newLinkType = 'customer-provider';
+      addingEdge = true;
+    } else {
+      network.disableEditMode();
+      addingEdge = false;
+    }
+
     // network.setOptions({ ...options, interaction: { hover: false } });
-    addingEdge = true;
+
+    addingCPLink = !addingCPLink;
+    addingPeerLink = false;
   }
 
   export function addPeerLink() {
-    network.addEdgeMode();
-    newLinkType = 'peer';
+    if (!addingPeerLink) {
+      network.addEdgeMode();
+      newLinkType = 'peer';
+      addingEdge = false;
+    } else {
+      network.disableEditMode();
+      addingEdge = false;
+    }
+
     // network.setOptions({ ...options, interaction: { hover: false } });
-    addingEdge = true;
+
+    addingPeerLink = !addingPeerLink;
+    addingCPLink = false;
   }
 
   function addEdge2() {
@@ -657,7 +688,8 @@
       let color: {} | null;
 
       if (selectedASRole === 'victim') {
-        color = { border: '#047857', background: '#34d399' };
+        const colorProp = { border: '#047857', background: '#34d399' };
+        color = { ...colorProp, highlight: colorProp, hover: colorProp };
 
         if (victimASN !== null && victimASN !== selectedASN) {
           nodes.update({ id: victimASN, role: null, color: null });
@@ -665,11 +697,16 @@
 
         victimASN = selectedASN;
       } else if (selectedASRole === 'attacker') {
-        color = { border: '#b91c1c', background: '#f87171' };
+        const colorProp = { border: '#b91c1c', background: '#f87171' };
+        color = { ...colorProp, highlight: colorProp, hover: colorProp };
       } else {
         color = null;
       }
-      nodes.update({ id: selectedASN, role: selectedASRole, color: color });
+      nodes.update({
+        id: selectedASN,
+        role: selectedASRole,
+        color: color
+      });
     }
   }
 
@@ -1048,8 +1085,7 @@
           <Label class="text-right">Policy</Label>
           <select
             bind:value={newASPolicy}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4"
-          >
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
             <option value="bgp">BGP</option>
             <option value="rov">ROV</option>
             <option value="aspa">ASPA</option>
@@ -1063,8 +1099,7 @@
           <Label class="text-right">Role</Label>
           <select
             bind:value={newASRole}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4"
-          >
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
             <option value="">None</option>
             <option value="attacker">Attacker</option>
             <option value="victim">Victim</option>
@@ -1081,8 +1116,7 @@
               size="icon"
               variant="outline"
               class="size-7"
-              on:click={() => (newASProviders = [...newASProviders, null])}
-            >
+              on:click={() => (newASProviders = [...newASProviders, null])}>
               <Plus class="size-4" />
             </Button>
           </div>
@@ -1091,8 +1125,7 @@
               <div class="grid grid-cols-4 gap-2">
                 <select
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASProviders[index]}
-                >
+                  bind:value={newASProviders[index]}>
                   <option value={null}>Select an AS</option>
                   {#each availableNodes(newASProviders, index) as node}
                     <option value={node.id}>{node.label || node.id}</option>
@@ -1106,8 +1139,7 @@
                   on:click={() => {
                     newASProviders.splice(index, 1);
                     newASProviders = newASProviders;
-                  }}
-                >
+                  }}>
                   <Trash2 class="size-4" />
                 </Button>
               </div>
@@ -1123,8 +1155,7 @@
               size="icon"
               variant="outline"
               class="size-7"
-              on:click={() => (newASCustomers = [...newASCustomers, null])}
-            >
+              on:click={() => (newASCustomers = [...newASCustomers, null])}>
               <Plus class="size-4" />
             </Button>
           </div>
@@ -1133,8 +1164,7 @@
               <div class="grid grid-cols-4 gap-2">
                 <select
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASCustomers[index]}
-                >
+                  bind:value={newASCustomers[index]}>
                   <option value={null}>Select an AS</option>
                   {#each availableNodes(newASCustomers, index) as node}
                     <option value={node.id}>{node.label || node.id}</option>
@@ -1148,8 +1178,7 @@
                   on:click={() => {
                     newASCustomers.splice(index, 1);
                     newASCustomers = newASCustomers;
-                  }}
-                >
+                  }}>
                   <Trash2 class="size-4" />
                 </Button>
               </div>
@@ -1171,8 +1200,7 @@
               size="icon"
               variant="outline"
               class="size-7"
-              on:click={() => (newASPeers = [...newASPeers, null])}
-            >
+              on:click={() => (newASPeers = [...newASPeers, null])}>
               <Plus class="size-4" />
             </Button>
           </div>
@@ -1181,8 +1209,7 @@
               <div class="grid grid-cols-4 gap-2">
                 <select
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASPeers[index]}
-                >
+                  bind:value={newASPeers[index]}>
                   <option value={null}>Select an AS</option>
                   {#each availableNodes(newASPeers, index) as node}
                     <option value={node.id}>{node.label || node.id}</option>
@@ -1196,8 +1223,7 @@
                   on:click={() => {
                     newASPeers.splice(index, 1);
                     newASPeers = newASPeers;
-                  }}
-                >
+                  }}>
                   <Trash2 class="size-4" />
                 </Button>
               </div>
@@ -1285,8 +1311,7 @@
       <Button
         on:click={() => {
           renameAS(selectedASN2, Number(renamedASN));
-        }}>Change ASN</Button
-      >
+        }}>Change ASN</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
@@ -1367,34 +1392,37 @@
     <Button
       on:click={() => (showModal = true)}
       class="bg-emerald-500 hover:bg-emerald-500/90"
-      size="sm"
-    >
+      size="sm">
       <!-- <Plus class="mr-2 h-4 w-4" /> -->
       Add AS
     </Button>
-    <Button on:click={addCPLink} class="bg-emerald-500 hover:bg-emerald-500/90" size="sm">
+    <Button
+      on:click={addCPLink}
+      class={addingCPLink
+        ? 'bg-emerald-400 hover:bg-emerald-400/90'
+        : 'bg-emerald-500 hover:bg-emerald-500/90'}
+      size="sm">
       <!-- <Plus class="mr-2 h-4 w-4" /> -->
       Add Customer-Provider Link
     </Button>
-    <Button on:click={addPeerLink} class="bg-emerald-500 hover:bg-emerald-500/90" size="sm">
+    <Button
+      on:click={addPeerLink}
+      class={addingPeerLink
+        ? 'bg-emerald-400 hover:bg-emerald-400/90'
+        : 'bg-emerald-500 hover:bg-emerald-500/90'}
+      size="sm">
       <!-- <Plus class="mr-2 h-4 w-4" /> -->
       Add Peer Link
     </Button>
 
-    <!-- <button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
-  >Add Customer-Provider Link</button
->
-<button on:click={() => (showAddEdgeModal = true)} class="bg-emerald-500 text-white p-2 rounded"
-  >Add Peer-Peer Link</button
-> -->
-    <!-- <Button on:click={clearGraph} variant="destructive"> -->
     <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
       <Ban class="mr-2 size-4" />
       Clear Graph
     </Button>
 
     {#if simulationResults}
-      <Popover.Root>
+      <!-- Legend -->
+      <Popover.Root open={showLegend}>
         <Popover.Trigger>
           <Button variant="outline" size="sm">
             <Info class="size-5" />
@@ -1405,19 +1433,23 @@
             <tr class="border-0">
               <td>(For most specific prefix only)</td>
             </tr>
-            <tr class="border border-black">
-              <td class="bg-gradient-to-r from-red-500 to-white"
-                >&#128520; ATTACKER SUCCESS &#128520;</td
-              >
+            <tr>
+              <td class="bg-gradient-to-r from-red-500 to-white border border-black">
+                &#128520; ATTACKER SUCCESS &#128520;
+              </td>
+              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 0)}</td>
             </tr>
-            <tr class="border border-black">
-              <td class="bg-gradient-to-r from-green-400 to-white"
-                >&#128519; VICTIM SUCCESS &#128519;</td
-              >
+            <tr>
+              <td class="bg-gradient-to-r from-green-400 to-white border border-black">
+                &#128519; VICTIM SUCCESS &#128519;
+              </td>
+              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 1)}</td>
             </tr>
-            <tr class="border border-black">
-              <td class="bg-gradient-to-r from-gray-400 to-white">&#10041; DISCONNECTED &#10041;</td
-              >
+            <tr>
+              <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
+                &#10041; DISCONNECTED &#10041;
+              </td>
+              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 2)}</td>
             </tr>
           </table>
         </Popover.Content>
@@ -1427,7 +1459,7 @@
 {/if}
 
 <!-- Graph -->
-<div bind:this={container} class="mt-2 w-full" style="height: 35rem"></div>
+<div bind:this={container} class="mt-2 w-full h-[calc(100vh-205px)] overflow-auto" style=""></div>
 
 {#if selectedASN !== null}
   <!-- Level:
@@ -1456,8 +1488,7 @@
           <select
             bind:value={selectedASPolicy}
             on:change={updateASPolicy}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4"
-          >
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
             <option value="bgp">BGP</option>
             <option value="rov">ROV</option>
             <option value="aspa">ASPA</option>
@@ -1472,8 +1503,7 @@
           <select
             bind:value={selectedASRole}
             on:change={updateASRole}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4"
-          >
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
             <option value="">None</option>
             <option value="attacker">Attacker</option>
             <option value="victim">Victim</option>
@@ -1517,8 +1547,7 @@
               variant="outline"
               class="size-7"
               on:click={() =>
-                (selectedASRelationships.providers = [...selectedASRelationships.providers, null])}
-            >
+                (selectedASRelationships.providers = [...selectedASRelationships.providers, null])}>
               <Plus class="size-4" />
             </Button>
           </div>
@@ -1529,8 +1558,7 @@
                   value={selectedASRelationships.providers[index]}
                   on:change={(e) =>
                     updateRelationship('provider', provider, Number(e.target.value))}
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                >
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3">
                   <option value={null}>Select an AS</option>
                   {#each availableNodes(selectedASRelationships.providers, index, Number(selectedASN)) as node}
                     <option value={node.id}>{node.label || node.id}</option>
@@ -1541,8 +1569,7 @@
                   size="icon"
                   variant="outline"
                   class="col-span-1"
-                  on:click={() => deleteRelationship('provider', provider)}
-                >
+                  on:click={() => deleteRelationship('provider', provider)}>
                   <Trash2 class="size-4" />
                 </Button>
               </div>
@@ -1559,8 +1586,7 @@
               variant="outline"
               class="size-7"
               on:click={() =>
-                (selectedASRelationships.customers = [...selectedASRelationships.customers, null])}
-            >
+                (selectedASRelationships.customers = [...selectedASRelationships.customers, null])}>
               <Plus class="size-4" />
             </Button>
           </div>
@@ -1571,8 +1597,7 @@
                   value={selectedASRelationships.customers[index]}
                   on:change={(e) =>
                     updateRelationship('customer', customer, Number(e.target.value))}
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                >
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3">
                   <option value={null}>Select an AS</option>
                   {#each availableNodes(selectedASRelationships.customers, index, Number(selectedASN)) as node}
                     <option value={node.id}>{node.label || node.id}</option>
@@ -1583,8 +1608,7 @@
                   size="icon"
                   variant="outline"
                   class="col-span-1"
-                  on:click={() => deleteRelationship('customer', customer)}
-                >
+                  on:click={() => deleteRelationship('customer', customer)}>
                   <Trash2 class="size-4" />
                 </Button>
               </div>
@@ -1607,8 +1631,7 @@
               variant="outline"
               class="size-7"
               on:click={() =>
-                (selectedASRelationships.peers = [...selectedASRelationships.peers, null])}
-            >
+                (selectedASRelationships.peers = [...selectedASRelationships.peers, null])}>
               <Plus class="size-4" />
             </Button>
           </div>
@@ -1618,8 +1641,7 @@
                 <select
                   value={selectedASRelationships.peers[index]}
                   on:change={(e) => updateRelationship('peer', peer, Number(e.target.value))}
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                >
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3">
                   <option value={null}>Select an AS</option>
                   {#each availableNodes(selectedASRelationships.peers, index, Number(selectedASN)) as node}
                     <option value={node.id}>{node.label || node.id}</option>
@@ -1630,8 +1652,7 @@
                   size="icon"
                   variant="outline"
                   class="col-span-1"
-                  on:click={() => deleteRelationship('peer', peer)}
-                >
+                  on:click={() => deleteRelationship('peer', peer)}>
                   <Trash2 class="size-4" />
                 </Button>
               </div>
@@ -1652,24 +1673,19 @@
     <Card.Header>
       <Card.Title
         >Selected Link: {selectedLink.from}
-        to {selectedLink.to}</Card.Title
-      >
+        to {selectedLink.to}</Card.Title>
       <Card.Description
-        >{edges.get(selectedLinkID).dashes ? 'Peer' : 'Customer-Provider'} Link</Card.Description
-      >
+        >{edges.get(selectedLinkID).dashes ? 'Peer' : 'Customer-Provider'} Link</Card.Description>
     </Card.Header>
     <Card.Footer class="space-x-2">
       {#if edges.get(selectedLinkID).dashes}
         <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline"
-          >Switch to CP Link</Button
-        >
+          >Switch to CP Link</Button>
       {:else}
         <Button on:click={() => handleContextMenuAction('swapCP2')} variant="outline"
-          >Swap Customer and Provider</Button
-        >
+          >Swap Customer and Provider</Button>
         <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline"
-          >Switch to P2P Link</Button
-        >
+          >Switch to Peer Link</Button>
       {/if}
 
       <Button on:click={deleteEdge} variant="destructive">Delete Link</Button>
@@ -1711,8 +1727,7 @@
   <div
     transition:flyAndScale
     class="z-50 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md focus:outline-none absolute"
-    style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;"
-  >
+    style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
     {#if selectedASN2 !== null}
       <button
         class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
@@ -1720,15 +1735,13 @@
           renamedASN = selectedASN2;
           showRenameASModal = true;
           contextMenuData.show = false;
-        }}
-      >
+        }}>
         <Pencil class="size-4 mr-2" />
         Change AS Number
       </button>
       <button
         class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-        on:click={() => handleContextMenuAction('deleteNode')}
-      >
+        on:click={() => handleContextMenuAction('deleteNode')}>
         <Trash2 class="size-4 mr-2" />
         Delete AS
       </button>
@@ -1736,31 +1749,27 @@
       {#if edges.get(selectedLinkID2).dashes}
         <button
           class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-          on:click={() => handleContextMenuAction('switchEdge')}
-        >
+          on:click={() => handleContextMenuAction('switchEdge')}>
           <ArrowLeftRight class="size-4 mr-2" />
           Switch to CP Link
         </button>
       {:else}
         <button
           class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-          on:click={() => handleContextMenuAction('switchEdge')}
-        >
+          on:click={() => handleContextMenuAction('switchEdge')}>
           <ArrowLeftRight class="size-4 mr-2" />
-          Switch to P2P Link
+          Switch to Peer Link
         </button>
         <button
           class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-          on:click={() => handleContextMenuAction('swapCP')}
-        >
+          on:click={() => handleContextMenuAction('swapCP')}>
           <ArrowLeftRight class="size-4 mr-2" />
           Swap Customer and Provider
         </button>
       {/if}
       <button
         class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-        on:click={() => handleContextMenuAction('deleteEdge')}
-      >
+        on:click={() => handleContextMenuAction('deleteEdge')}>
         <Trash2 class="size-4 mr-2" />
         Delete Link
       </button>
@@ -1770,8 +1779,7 @@
         on:click={() => {
           showModal = true;
           contextMenuData.show = false;
-        }}
-      >
+        }}>
         Add AS
       </button>
       <button
@@ -1779,8 +1787,7 @@
         on:click={() => {
           showAddEdgeModal = true;
           contextMenuData.show = false;
-        }}
-      >
+        }}>
         Add Link
       </button>
     {/if}
@@ -1845,41 +1852,4 @@
 </ContextMenu.Root> -->
 
 <style>
-  /* .context-menu {
-    position: absolute;
-    z-index: 200;
-    border: 1px solid #ccc;
-    background-color: #fff;
-    padding: 5px;
-    border-radius: 5px;
-    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-  }
-  .context-menu ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .context-menu li {
-    padding: 5px 10px;
-    cursor: pointer;
-  }
-  .context-menu li:hover {
-    background-color: #f0f0f0;
-  } */
-
-  /* .tooltip {
-    position: absolute;
-    z-index: 100;
-    border: 1px solid #ccc;
-    background-color: #fff;
-    padding: 10px;
-    border-radius: 5px;
-    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-  } */
-  /* table {
-    border: 1px solid black;
-  }
-  td {
-    border: 1px solid black;
-  } */
 </style>

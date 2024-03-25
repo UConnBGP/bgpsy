@@ -264,8 +264,7 @@
         <Checkbox
           id="terms"
           bind:checked={newAnnouncementCalculateASPath}
-          class="data-[state=checked]:bg-emerald-500 border-emerald-500"
-        />
+          class="data-[state=checked]:bg-emerald-500 border-emerald-500" />
       </div>
       {#if !newAnnouncementCalculateASPath}
         <div class="grid grid-cols-3 items-center gap-4">
@@ -273,8 +272,7 @@
           <Input
             value={newAnnouncement.as_path.join(', ')}
             class="col-span-2"
-            on:input={(e) => updateASPath2(newAnnouncement, e.target.value)}
-          />
+            on:input={(e) => updateASPath2(newAnnouncement, e.target.value)} />
         </div>
       {/if}
 
@@ -283,8 +281,7 @@
         <Checkbox
           id="terms"
           bind:checked={newAnnouncementCalculateROA}
-          class="data-[state=checked]:bg-emerald-500 border-emerald-500"
-        />
+          class="data-[state=checked]:bg-emerald-500 border-emerald-500" />
       </div>
       <!-- {#if !newAnnouncementCalculateROA}
         <div class="grid grid-cols-3 items-center gap-4">
@@ -326,8 +323,7 @@
         <Input
           value={selectedAnnouncement.as_path.join(', ')}
           class="col-span-2"
-          on:input={(e) => updateASPath2(selectedAnnouncement, e.target.value)}
-        />
+          on:input={(e) => updateASPath2(selectedAnnouncement, e.target.value)} />
       </div>
       <!-- <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right col-span-1">ROA Origin ASN</Label>
@@ -363,12 +359,11 @@
       </div>
 
       <div class="grid grid-cols-3 items-center gap-4 my-1">
-        <Label class="col-span-1 text-right">Calculate Max Length</Label>
+        <Label class="col-span-1 text-right leading-normal">Use Prefix Length for Max Length</Label>
         <Checkbox
           id="terms"
           bind:checked={newROACalculateLength}
-          class="data-[state=checked]:bg-emerald-500 border-emerald-500"
-        />
+          class="data-[state=checked]:bg-emerald-500 border-emerald-500" />
       </div>
 
       {#if !newROACalculateLength}
@@ -402,7 +397,7 @@
       </div>
 
       <div class="grid grid-cols-3 items-center gap-4 my-1">
-        <Label class="col-span-1 text-right">Calculate Max Length</Label>
+        <Label class="col-span-1 text-right leading-normal">Use Prefix Length for Max Length</Label>
         <Checkbox id="terms" bind:checked={selectedROACalculateLength} />
       </div>
       {#if !selectedROACalculateLength}
@@ -458,8 +453,7 @@
           config.announcements = [];
           config.roas = [];
         }
-      }}
-    >
+      }}>
       <option value={null}>Custom Scenario</option>
       <option value="SubprefixHijack">Subprefix Hijack</option>
       <option value="PrefixHijack">Prefix Hijack</option>
@@ -497,12 +491,10 @@
   {#if config.scenario !== null}
     <div>
       <label for="attack-modifier" class="block text-sm font-medium leading-6 mb-2"
-        >Attack Modifier</label
-      >
+        >Attack Modifier</label>
       <select
         bind:value={config.scenario_modifier}
-        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-      >
+        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
         <option value={null}>None</option>
         <option value="origin_hijack">Origin Hijack</option>
         <option value="shortest_path_export_all_hijack">Shortest Path Export All</option>
@@ -523,8 +515,7 @@
           size="icon"
           variant="ghost"
           class="bg-emerald-500 hover:bg-emerald-500/90 rounded-full size-6 text-white hover:text-accent-background"
-          on:click={() => (showAddAnnouncementModal = true)}
-        >
+          on:click={() => (showAddAnnouncementModal = true)}>
           <Plus class="size-4" />
         </Button>
       </div>
@@ -564,20 +555,17 @@
                 {/if} -->
                 {#if annROAStates[index] === 'Valid'}
                   <span
-                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-emerald-500 border-emerald-500"
-                  >
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-emerald-500 border-emerald-500">
                     Valid
                   </span>
                 {:else if annROAStates[index] === 'Invalid'}
                   <span
-                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-destructive border-destructive"
-                  >
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-destructive border-destructive">
                     Invalid
                   </span>
                 {:else}
                   <span
-                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground"
-                  >
+                    class="inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground">
                     Unknown
                   </span>
                 {/if}
@@ -590,8 +578,7 @@
                       variant="ghost"
                       builders={[builder]}
                       size="icon"
-                      class="relative w-7 h-7 p-0"
-                    >
+                      class="relative w-7 h-7 p-0">
                       <span class="sr-only">Open menu</span>
                       <MoreHorizontal class="w-4 h-4" />
                     </Button>
@@ -604,8 +591,7 @@
                           selectedAnnouncement = announcement;
                           selectedIndex = index;
                           showEditAnnouncementModal = true;
-                        }}
-                      >
+                        }}>
                         <Pencil class="mr-2 size-4" />
                         <span>Edit</span>
                       </DropdownMenu.Item>
@@ -616,8 +602,7 @@
                           // Update ROA validity
                           annROAStates = await getROAStates();
                         }}
-                        class="text-destructive data-[highlighted]:text-destructive"
-                      >
+                        class="text-destructive data-[highlighted]:text-destructive">
                         <Trash2 class="mr-2 size-4" />
                         <span>Delete</span>
                       </DropdownMenu.Item>
@@ -642,8 +627,7 @@
           size="icon"
           variant="ghost"
           class="bg-emerald-500 hover:bg-emerald-500/90 rounded-full size-6 text-white hover:text-accent-background"
-          on:click={() => (showAddROAModal = true)}
-        >
+          on:click={() => (showAddROAModal = true)}>
           <Plus class="size-4" />
         </Button>
       </div>
@@ -692,8 +676,7 @@
                       variant="ghost"
                       builders={[builder]}
                       size="icon"
-                      class="relative w-7 h-7 p-0"
-                    >
+                      class="relative w-7 h-7 p-0">
                       <span class="sr-only">Open menu</span>
                       <MoreHorizontal class="w-4 h-4" />
                     </Button>
@@ -708,8 +691,7 @@
                           selectedROACalculateLength =
                             selectedROA.max_length === null || selectedROA.max_length === undefined;
                           showEditROAModal = true;
-                        }}
-                      >
+                        }}>
                         <Pencil class="mr-2 size-4" />
                         <span>Edit</span>
                       </DropdownMenu.Item>
@@ -720,8 +702,7 @@
                           // Update ROA validity
                           annROAStates = await getROAStates();
                         }}
-                        class="text-destructive data-[highlighted]:text-destructive"
-                      >
+                        class="text-destructive data-[highlighted]:text-destructive">
                         <Trash2 class="mr-2 size-4" />
                         <span>Delete</span>
                       </DropdownMenu.Item>

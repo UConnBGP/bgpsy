@@ -135,6 +135,20 @@ export async function checkAnnValidity2(ann: Announcement, roas: ROA[]): Promise
   }
 }
 
+// Function to filter JSON object by value
+export function countByValue(jsonObject: object, filterValue) {
+  // Convert the JSON object to an array of [key, value] pairs
+  const entries = Object.entries(jsonObject);
+
+  // Filter the entries based on the value
+  const filteredEntries = entries.filter(([key, value]) => value === filterValue);
+
+  // Convert the filtered entries back into an object
+  const filteredObject = Object.fromEntries(filteredEntries);
+
+  return Object.keys(filteredObject).length;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
