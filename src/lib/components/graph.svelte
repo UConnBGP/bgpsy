@@ -287,7 +287,7 @@
           addingPeerLink = false;
         }
       },
-      interaction: { hover: true, zoomSpeed: 0.7 },
+      interaction: { hover: true, zoomSpeed: 0.7, zoomView: false, navigationButtons: true },
       physics: false
     };
 
@@ -1459,7 +1459,7 @@
 {/if}
 
 <!-- Graph -->
-<div bind:this={container} class="mt-2 w-full h-[calc(100vh-205px)] overflow-auto" style=""></div>
+<div bind:this={container} class="mt-2 w-full h-[calc(100vh-205px)] overflow-auto"></div>
 
 {#if selectedASN !== null}
   <!-- Level:

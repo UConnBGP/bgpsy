@@ -2,7 +2,7 @@
   import { DataSet } from 'vis-network/standalone/esm/vis-network';
   import ConfigForm from '$lib/components/config-form.svelte';
   import Graph from '../lib/components/graph.svelte';
-  import { USE_FILE_MENU, type Config, exampleConfigsMap, exampleConfigsMap2 } from '$lib';
+  import { type Config, exampleConfigsMap, exampleConfigsMap2 } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
   import CitationModal from '$lib/components/citation-modal.svelte';
   import ErrorBanner from '$lib/components/error-banner.svelte';
@@ -12,13 +12,8 @@
   import Download from 'lucide-svelte/icons/download';
   import Loader2 from 'lucide-svelte/icons/loader-2';
   import Upload from 'lucide-svelte/icons/upload';
-  import Save from 'lucide-svelte/icons/save';
-  import FolderClosed from 'lucide-svelte/icons/folder-closed';
-  import Ban from 'lucide-svelte/icons/ban';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import * as Menubar from '$lib/components/ui/menubar';
-  import * as Alert from '$lib/components/ui/alert';
   import * as Accordion from '$lib/components/ui/accordion';
   import { getROAStates2 } from '$lib/utils';
   import Bug from 'lucide-svelte/icons/bug';
@@ -220,9 +215,6 @@
         //   ) {
         //     node.shape = 'hexagon';
         //   }
-      }
-      if (data.base_policy === 'ROVSimplePolicy') {
-        node.shape = 'hexagon';
       }
       if (data.victim_asns?.includes(asn)) {
         node.role = 'victim';
@@ -453,33 +445,6 @@
 
   <!-- Banner for errors -->
   <ErrorBanner message={errorMessage} bind:open={showBanner} />
-
-  <!-- {#if showBanner}
-  <Alert.Root variant="destructive" class="mb-4"> -->
-  <!-- <AlertTriangle class="h-4 w-4" /> -->
-  <!-- <Alert.Title>Error</Alert.Title> -->
-  <!-- <Alert.Description>{errorMessage}</Alert.Description> -->
-  <!-- <Alert.Description class="text-sm font-normal"
-      >Failed to connect to the server</Alert.Description
-    > -->
-  <!-- <div class="flex">
-      <div class="flex-shrink-0 mt-0.5">
-        <AlertTriangle class="size-4" />
-      </div>
-      <div class="flex-1 flex justify-between ms-2">
-        <p class="text-sm">Failed to connect to the server</p>
-        <Button
-          class="hover:bg-red-100 size-4"
-          size="icon"
-          variant="ghost"
-          on:click={() => (showBanner = false)}
-        >
-          <X class="size-4" />
-        </Button>
-      </div>
-    </div> -->
-  <!-- </Alert.Root>
-  {/if} -->
 
   <!-- Two columns for form and graph -->
   <div class="flex md:flex-row flex-col space-x-4">
