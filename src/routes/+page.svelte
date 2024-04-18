@@ -435,20 +435,24 @@
 </script>
 
 <svelte:head>
-  <title>BGPy</title>
+  <title>BGPsy</title>
 </svelte:head>
 
-<main class="container px-4 py-4">
-  <h1 class="text-4xl font-semibold mb-4">
-    <a href="https://github.com/jfuruness/bgpy_pkg/wiki" target="_blank">BGPy</a>
-  </h1>
+<main class="container py-8">
+  <div class="flex items-baseline space-x-2 mb-4">
+    <h1 class="text-4xl font-semibold">
+      <a href="https://github.com/jfuruness/bgpy_pkg/wiki" target="_blank">BGPsy</a>
+    </h1>
+
+    <p class="font-medium">An interface for BGPy</p>
+  </div>
 
   <!-- Banner for errors -->
   <ErrorBanner message={errorMessage} bind:open={showBanner} />
 
   <!-- Two columns for form and graph -->
   <div class="flex md:flex-row flex-col space-x-4">
-    <div class="basis-1/2 order-2 md:order-1">
+    <div class="basis-1/3 order-2 md:order-1">
       <!-- Examples dropdown -->
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild let:builder>
@@ -470,9 +474,9 @@
         </DropdownMenu.Content>
       </DropdownMenu.Root>
 
-      <ConfigForm bind:annROAStates {config} {handleSubmit} />
+      <ConfigForm bind:annROAStates {config} />
 
-      <div class="mt-4 flex space-x-2 items-center">
+      <div class="mt-4 flex flex-col space-y-2">
         <!-- Submit button -->
         <Button
           on:click={() => {
@@ -516,7 +520,7 @@
       </div>
     </div>
 
-    <div class="basis-1/2 order-1 md:order-2">
+    <div class="basis-2/3 order-1 md:order-2">
       <!-- Link and citation buttons -->
       <div class="flex flex-row float-right">
         <a
@@ -545,13 +549,14 @@
       <Graph
         {nodes}
         {edges}
-        {simulationResults}
+        bind:simulationResults
         bind:this={graphComponent}
         bind:showModal={showAddASModal}
         bind:showClearGraphModal
         bind:cpLinks
         bind:peerLinks
-        bind:policyMap />
+        bind:policyMap
+        bind:imageURL />
     </div>
   </div>
 

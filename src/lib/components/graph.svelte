@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { Network, DataSet, type Options, type Node } from 'vis-network/standalone';
   import Ban from 'lucide-svelte/icons/ban';
-  import { USE_FILE_MENU, getPropagationRanks } from '$lib';
+  import { getPropagationRanks } from '$lib';
   import * as ContextMenu from './ui/context-menu';
   import * as Dialog from './ui/dialog';
   import * as AlertDialog from './ui/alert-dialog';
@@ -13,8 +13,20 @@
   import Info from 'lucide-svelte/icons/info';
   import * as Tabs from '$lib/components/ui/tabs';
   import * as Card from '$lib/components/ui/card';
-  import { ArrowLeftRight, Pencil, Plus, Trash, Trash2 } from 'lucide-svelte';
+  import {
+    ArrowLeftRight,
+    Fullscreen,
+    Pencil,
+    Plus,
+    Trash,
+    Trash2,
+    X,
+    ZoomIn,
+    ZoomOut
+  } from 'lucide-svelte';
   import { countByValue, flyAndScale } from '$lib/utils';
+  import type { FullItem } from 'vis-data/declarations/data-interface';
+  import ErrorBanner from './error-banner.svelte';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
@@ -24,24 +36,24 @@
   export let showModal: boolean;
   export let showClearGraphModal: boolean;
   export let policyMap: Record<number, string>;
+  export let imageURL: string;
 
   let container: HTMLDivElement;
   let network: Network;
   let options: Options;
-  let selectedAS = null;
-  let selectedASN = null;
-  let selectedASLevel = null;
-  let selectedASRole = null;
-  let selectedASPolicy = null;
-  let selectedLink = null;
-  let selectedLinkID = null;
-  let selectedASN2 = null;
-  let selectedLinkID2 = null;
+  let selectedAS: any | null = null;
+  let selectedASN: number | null = null;
+  let selectedASLevel: any | null = null;
+  let selectedASRole: any | null = null;
+  let selectedASPolicy: any | null = null;
+  let selectedLink: any | null = null;
+  let selectedLinkID: string | null = null;
+  let selectedASN2: any | null = null;
+  let selectedLinkID2: string | null = null;
   let showAddEdgeModal = false;
   let showRenameASModal = false;
   let showLegend = false;
-  // let showConfirmAddEdgeModal = false;
-  let newNodeId;
+  let newNodeId: any;
   let renamedASN: number;
   let newASPolicy = 'bgp';
   let newASRole = '';
@@ -62,13 +74,14 @@
   let addingPeerLink = false;
   let rightClick = false;
   let newASCustomers = [];
-  let newASProviders = [];
+  let newASProviders = Array<any>();
   let newASPeers = [];
   let selectedASRelationships = {
     customers: Array<number | null>(),
     providers: Array<number | null>(),
     peers: Array<number | null>()
   };
+  let addASErrorMsg = '';
 
   onMount(() => {
     // Configuration for the network
@@ -287,7 +300,7 @@
           addingPeerLink = false;
         }
       },
-      interaction: { hover: true, zoomSpeed: 0.7, zoomView: false, navigationButtons: true },
+      interaction: { hover: true, zoomSpeed: 0.7, zoomView: false },
       physics: false
     };
 
@@ -295,11 +308,14 @@
     network = new Network(container, { nodes, edges }, options);
     network.disableEditMode();
 
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
     network.on('click', (params) => {
       if (params.nodes.length > 0) {
         selectedLinkID = null;
         selectedLink = null;
         selectedASN = params.nodes[0];
+        // @ts-ignore
         selectedAS = nodes.get(selectedASN);
         selectedASLevel = selectedAS.level;
         selectedASRole = selectedAS.role || ''; // Get the role of the selected node
@@ -311,6 +327,7 @@
         selectedAS = null;
         selectedASLevel = null;
         selectedLinkID = params.edges[0];
+        // @ts-ignore
         selectedLink = edges.get(selectedLinkID);
       }
 
@@ -396,6 +413,8 @@
     network.on('blurEdge', (params) => {
       edgeData = null;
     });
+
+    console.log(nodes.get());
   });
 
   onDestroy(() => {
@@ -411,12 +430,33 @@
 
   $: if (simulationResults) {
     showLegend = true;
+    network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
+  }
+
+  function handleWheel(event: WheelEvent) {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const direction = event.deltaY > 0 ? 1 / 1.1 : 1.1;
+      const newScale = network.getScale() * direction;
+      network.moveTo({
+        scale: newScale,
+        animation: { duration: 200, easingFunction: 'linear' }
+      });
+    }
   }
 
   function addNode() {
     if (!newNodeId) {
+      addASErrorMsg = 'AS Number is not entered';
       return;
     }
+
+    // Error if AS is negative
+    if (newNodeId < 0) {
+      addASErrorMsg = 'AS Number cannot be negative';
+      return;
+    }
+
     const newNode = {
       id: Number(newNodeId),
       label: String(newNodeId),
@@ -526,6 +566,7 @@
     newASCustomers = [];
     newASProviders = [];
     newASPeers = [];
+    addASErrorMsg = '';
 
     showModal = false; // Close modal
   }
@@ -597,7 +638,7 @@
     if (!addingPeerLink) {
       network.addEdgeMode();
       newLinkType = 'peer';
-      addingEdge = false;
+      addingEdge = true;
     } else {
       network.disableEditMode();
       addingEdge = false;
@@ -733,6 +774,7 @@
   function clearGraph() {
     nodes.clear();
     edges.clear();
+    imageURL = '';
   }
 
   function handleContextMenuAction(action: string) {
@@ -1076,6 +1118,8 @@
     </Dialog.Header>
     <div>
       <div class="grid gap-4 py-4">
+        <ErrorBanner message={addASErrorMsg} open={addASErrorMsg !== ''} />
+
         <div class="grid grid-cols-5 items-center gap-4">
           <Label class="text-right">AS Number</Label>
           <Input bind:value={newNodeId} class="col-span-4" type="number" />
@@ -1387,93 +1431,122 @@
 <h2 class="text-sm font-medium leading-6 mb-2">Graph</h2>
 
 <!-- Action Button -->
-{#if !USE_FILE_MENU}
-  <div class="flex space-x-2">
-    <Button
-      on:click={() => (showModal = true)}
-      class="bg-emerald-500 hover:bg-emerald-500/90"
-      size="sm">
-      <!-- <Plus class="mr-2 h-4 w-4" /> -->
-      Add AS
-    </Button>
-    <Button
-      on:click={addCPLink}
-      class={addingCPLink
-        ? 'bg-emerald-400 hover:bg-emerald-400/90'
-        : 'bg-emerald-500 hover:bg-emerald-500/90'}
-      size="sm">
-      <!-- <Plus class="mr-2 h-4 w-4" /> -->
-      Add Customer-Provider Link
-    </Button>
-    <Button
-      on:click={addPeerLink}
-      class={addingPeerLink
-        ? 'bg-emerald-400 hover:bg-emerald-400/90'
-        : 'bg-emerald-500 hover:bg-emerald-500/90'}
-      size="sm">
-      <!-- <Plus class="mr-2 h-4 w-4" /> -->
-      Add Peer Link
-    </Button>
+<div class="flex space-x-2">
+  <Button
+    on:click={() => (showModal = true)}
+    class="bg-emerald-500 hover:bg-emerald-500/90"
+    size="sm">
+    <!-- <Plus class="mr-2 h-4 w-4" /> -->
+    Add AS
+  </Button>
+  <Button
+    on:click={addCPLink}
+    class={addingCPLink
+      ? 'bg-emerald-400 hover:bg-emerald-400/90'
+      : 'bg-emerald-500 hover:bg-emerald-500/90'}
+    size="sm">
+    <!-- <Plus class="mr-2 h-4 w-4" /> -->
+    Draw Customer-Provider Link
+  </Button>
+  <Button
+    on:click={addPeerLink}
+    class={addingPeerLink
+      ? 'bg-emerald-400 hover:bg-emerald-400/90'
+      : 'bg-emerald-500 hover:bg-emerald-500/90'}
+    size="sm">
+    <!-- <Plus class="mr-2 h-4 w-4" /> -->
+    Draw Peer Link
+  </Button>
 
-    <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
-      <Ban class="mr-2 size-4" />
-      Clear Graph
-    </Button>
+  <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
+    <Ban class="size-4" />
+    <!-- Clear Graph -->
+  </Button>
 
-    {#if simulationResults}
-      <!-- Legend -->
-      <Popover.Root open={showLegend}>
-        <Popover.Trigger>
-          <Button variant="outline" size="sm">
-            <Info class="size-5" />
-          </Button>
-        </Popover.Trigger>
-        <Popover.Content class="w-80">
-          <table class="text-center">
-            <tr class="border-0">
-              <td>(For most specific prefix only)</td>
-            </tr>
-            <tr>
-              <td class="bg-gradient-to-r from-red-500 to-white border border-black">
-                &#128520; ATTACKER SUCCESS &#128520;
-              </td>
-              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 0)}</td>
-            </tr>
-            <tr>
-              <td class="bg-gradient-to-r from-green-400 to-white border border-black">
-                &#128519; VICTIM SUCCESS &#128519;
-              </td>
-              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 1)}</td>
-            </tr>
-            <tr>
-              <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
-                &#10041; DISCONNECTED &#10041;
-              </td>
-              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 2)}</td>
-            </tr>
-          </table>
-        </Popover.Content>
-      </Popover.Root>
-    {/if}
-  </div>
-{/if}
+  <Button
+    variant="outline"
+    size="sm"
+    on:click={() =>
+      network.moveTo({
+        scale: network.getScale() * 1.5,
+        animation: { duration: 200, easingFunction: 'linear' }
+      })}>
+    <ZoomIn class="size-5" />
+  </Button>
+
+  <Button
+    variant="outline"
+    size="sm"
+    on:click={() =>
+      network.moveTo({
+        scale: network.getScale() / 1.5,
+        animation: { duration: 200, easingFunction: 'linear' }
+      })}>
+    <ZoomOut class="size-5" />
+  </Button>
+
+  <Button
+    variant="outline"
+    size="sm"
+    on:click={() => network.fit({ animation: { duration: 200, easingFunction: 'linear' } })}>
+    <Fullscreen class="size-5" />
+  </Button>
+
+  {#if simulationResults}
+    <!-- Legend -->
+    <Popover.Root open={showLegend}>
+      <Popover.Trigger>
+        <Button variant="outline" size="sm">
+          <Info class="size-5" />
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content class="w-80">
+        <table class="text-center">
+          <tr class="border-0">
+            <td>(For most specific prefix only)</td>
+          </tr>
+          <tr>
+            <td class="bg-gradient-to-r from-red-500 to-white border border-black">
+              &#128520; ATTACKER SUCCESS &#128520;
+            </td>
+            <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 0)}</td>
+          </tr>
+          <tr>
+            <td class="bg-gradient-to-r from-green-400 to-white border border-black">
+              &#128519; VICTIM SUCCESS &#128519;
+            </td>
+            <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 1)}</td>
+          </tr>
+          <tr>
+            <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
+              &#10041; DISCONNECTED &#10041;
+            </td>
+            <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 2)}</td>
+          </tr>
+        </table>
+      </Popover.Content>
+    </Popover.Root>
+  {/if}
+</div>
 
 <!-- Graph -->
-<div bind:this={container} class="mt-2 w-full h-[calc(100vh-205px)] overflow-auto"></div>
+<div
+  bind:this={container}
+  class={`mt-2 w-full h-[calc(100vh-205px)] overflow-auto ${
+    addingEdge ? 'cursor-crosshair' : 'cursor-auto'
+  }`}>
+</div>
 
 {#if selectedASN !== null}
-  <!-- Level:
-      <input
-        type="number"
-        bind:value={selectedASLevel}
-        class="p-1 border border-gray-300 rounded"
-        min="1"
-        on:keydown={() => false}
-      />
-    </p>-->
-  <Card.Root class="mx-auto w-full">
+  <Card.Root class="mx-auto w-full relative">
     <Card.Header>
       <Card.Title>Selected AS: {selectedASN}</Card.Title>
+      <button
+        class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
+        on:click={() => (selectedASN = null)}>
+        <X class="h-4 w-4" />
+        <span class="sr-only">Close</span>
+      </button>
     </Card.Header>
 
     <Card.Content>
@@ -1510,32 +1583,6 @@
           </select>
         </div>
       </div>
-
-      <!-- {#each newASCustomers as customer, index}
-        <div class="grid grid-cols-4 gap-2">
-          <select
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-            bind:value={newASCustomers[index]}
-          >
-            <option value={null}>Select an AS</option>
-            {#each availableNodes(newASCustomers, index) as node}
-              <option value={node.id}>{node.label || node.id}</option>
-            {/each}
-          </select>
-
-          <Button
-            size="icon"
-            variant="outline"
-            class="col-span-1"
-            on:click={() => {
-              newASCustomers.splice(index, 1);
-              newASCustomers = newASCustomers;
-            }}
-          >
-            <Trash2 class="size-4" />
-          </Button>
-        </div>
-      {/each} -->
 
       <div class="grid grid-cols-3 gap-2 mt-4">
         <!-- Providers Column -->
@@ -1615,12 +1662,6 @@
             {/each}
           </div>
         </div>
-        <!-- <Card.Root>
-          <Card.Header>
-            <Card.Title>Customers</Card.Title>
-          </Card.Header>
-          <Card.Content>Test</Card.Content>
-        </Card.Root> -->
 
         <!-- Peers Column -->
         <div class="border p-4 rounded-lg">
@@ -1669,23 +1710,33 @@
 {/if}
 
 {#if selectedLinkID !== null}
-  <Card.Root class="mx-auto w-full">
+  <Card.Root class="mx-auto w-full relative">
     <Card.Header>
-      <Card.Title
-        >Selected Link: {selectedLink.from}
-        to {selectedLink.to}</Card.Title>
-      <Card.Description
-        >{edges.get(selectedLinkID).dashes ? 'Peer' : 'Customer-Provider'} Link</Card.Description>
+      <Card.Title>
+        Selected Link: {selectedLink.from} to {selectedLink.to}
+      </Card.Title>
+      <Card.Description>
+        {edges.get(selectedLinkID).dashes ? 'Peer' : 'Customer-Provider'} Link
+      </Card.Description>
+      <button
+        class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
+        on:click={() => (selectedLinkID = null)}>
+        <X class="h-4 w-4" />
+        <span class="sr-only">Close</span>
+      </button>
     </Card.Header>
     <Card.Footer class="space-x-2">
       {#if edges.get(selectedLinkID).dashes}
-        <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline"
-          >Switch to CP Link</Button>
+        <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline">
+          Switch to CP Link
+        </Button>
       {:else}
-        <Button on:click={() => handleContextMenuAction('swapCP2')} variant="outline"
-          >Swap Customer and Provider</Button>
-        <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline"
-          >Switch to Peer Link</Button>
+        <Button on:click={() => handleContextMenuAction('swapCP2')} variant="outline">
+          Swap Customer and Provider
+        </Button>
+        <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline">
+          Switch to Peer Link
+        </Button>
       {/if}
 
       <Button on:click={deleteEdge} variant="destructive">Delete Link</Button>
@@ -1792,64 +1843,7 @@
       </button>
     {/if}
   </div>
-  <!-- <div class="context-menu" style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
-    <ul>
-      {#if selectedASN2 !== null}
-        <li
-          on:click={() => {
-            renamedASN = selectedASN2;
-            showRenameASModal = true;
-            contextMenuData.show = false;
-          }}
-        >
-          Change AS Number
-        </li>
-        <li on:click={() => handleContextMenuAction('deleteNode')}>Delete AS</li>
-      {:else if selectedLinkID2 !== null}
-        {#if edges.get(selectedLinkID2).dashes}
-          <li on:click={() => handleContextMenuAction('switchEdge')}>Switch to CP Link</li>
-        {:else}
-          <li on:click={() => handleContextMenuAction('swapCP')}>Swap Customer and Provider</li>
-          <li on:click={() => handleContextMenuAction('switchEdge')}>Switch to P2P Link</li>
-        {/if}
-        <li on:click={() => handleContextMenuAction('deleteEdge')}>Delete Link</li>
-      {:else}
-        <li
-          on:click={() => {
-            showModal = true;
-            contextMenuData.show = false;
-          }}
-        >
-          Add AS
-        </li>
-        <li
-          on:click={() => {
-            showAddEdgeModal = true;
-            contextMenuData.show = false;
-          }}
-        >
-          Add Link
-        </li>
-      {/if}
-    </ul>
-  </div> -->
 {/if}
-
-<!-- <ContextMenu.Root bind:open={rightClick}>
-  <ContextMenu.Trigger>Test</ContextMenu.Trigger>
-  <ContextMenu.Content>
-    {#if selectedASN2 !== null}
-      <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
-        >Delete Node</ContextMenu.Item
-      >
-    {/if}
-    {#if selectedLinkID2 !== null}
-      <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
-        >Delete Edge</ContextMenu.Item
-      >
-    {/if}
-  </ContextMenu.Content>
-</ContextMenu.Root> -->
 
 <style>
 </style>

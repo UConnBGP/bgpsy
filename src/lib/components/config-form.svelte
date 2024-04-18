@@ -10,15 +10,12 @@
   import { Switch } from './ui/switch';
   import { Checkbox } from './ui/checkbox';
   import { isAnnouncementEmpty } from '../utils';
-  import X from 'lucide-svelte/icons/x';
-  import Check from 'lucide-svelte/icons/check';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Plus from 'lucide-svelte/icons/plus';
   import MoreHorizontal from 'lucide-svelte/icons/more-horizontal';
 
   export let config: Config;
-  export let handleSubmit: () => Promise<void>;
   export let annROAStates: string[] = [];
 
   let showAddAnnouncementModal = false;
@@ -28,13 +25,16 @@
   let newAnnouncement: Announcement = {
     prefix: '',
     as_path: [],
+    // @ts-ignore
     seed_asn: ''
     // roa_valid_length: false,
     // roa_origin: ''
   };
   let newROA: ROA = {
     prefix: '',
+    // @ts-ignore
     origin: '',
+    // @ts-ignore
     max_length: ''
   };
 
@@ -58,6 +58,7 @@
     }
 
     // Seed ASN must be populated
+    // @ts-ignore
     if (newAnnouncement.seed_asn === '') {
       return;
     }
@@ -73,13 +74,14 @@
         prefix: newAnnouncement.prefix,
         origin: newAnnouncement.seed_asn
       };
-      config.roas = [...config.roas, roa];
+      config.roas = [...(config.roas ?? []), roa];
     }
 
     config.announcements = [...config.announcements, newAnnouncement];
     newAnnouncement = {
       prefix: '',
       as_path: [],
+      // @ts-ignore
       seed_asn: ''
       // roa_valid_length: false,
       // roa_origin: ''
@@ -101,6 +103,7 @@
     }
 
     // ROA must be filled in
+    // @ts-ignore
     if (newROA.prefix === '' || newROA.origin === '') {
       return;
     }
@@ -115,10 +118,12 @@
     }
     console.log(newROA.max_length);
 
-    config.roas = [...config.roas, newROA];
+    config.roas = [...(config.roas ?? []), newROA];
     newROA = {
       prefix: '',
+      // @ts-ignore
       origin: '',
+      // @ts-ignore
       max_length: ''
       // roa_valid_length: false,
       // roa_origin: ''
@@ -150,6 +155,7 @@
 
     if (
       selectedROACalculateLength ||
+      // @ts-ignore
       selectedROA.max_length === '' ||
       selectedROA.max_length === undefined ||
       selectedROA.max_length === null
@@ -159,6 +165,10 @@
       selectedROA.max_length = Number(selectedROA.max_length);
     }
     console.log(selectedROA.max_length);
+    if (config.roas === undefined) {
+      console.log('roas array is empty');
+      return;
+    }
 
     config.roas[selectedIndex] = selectedROA;
 
@@ -180,15 +190,7 @@
     return states;
   }
 
-  function updateASPath(index: number, value: string) {
-    config.announcements[index].as_path = value
-      .split(',')
-      .map((asn) => parseInt(asn.trim()))
-      .filter((asn) => !isNaN(asn));
-    console.log(config.announcements[index].as_path);
-  }
-
-  function updateASPath2(ann: Announcement, value: string) {
+  function updateASPath(ann: Announcement, value: string) {
     ann.as_path = value
       .split(',')
       .map((asn) => parseInt(asn.trim()))
@@ -204,22 +206,11 @@
     return Number(parts[parts.length - 1]);
   }
 
-  function isAnnouncementValidByRoa(ann: Announcement) {
-    let found = false;
-
-    console.log(config.roas);
-    console.log(ann);
-    config.roas.forEach((roa) => {
-      if (roa.origin === ann.seed_asn && roa.prefix === ann.prefix) {
-        console.log('found');
-        found = true;
-      }
-    });
-
-    return found;
-  }
-
   async function checkAnnValidity(ann: Announcement): Promise<string> {
+    if (config.roas === undefined) {
+      return 'Unknown';
+    }
+
     const validation: AnnouncementValidition = {
       prefix: ann.prefix,
       origin: ann.seed_asn,
@@ -272,7 +263,7 @@
           <Input
             value={newAnnouncement.as_path.join(', ')}
             class="col-span-2"
-            on:input={(e) => updateASPath2(newAnnouncement, e.target.value)} />
+            on:input={(e) => updateASPath(newAnnouncement, e.target.value)} />
         </div>
       {/if}
 
@@ -323,7 +314,7 @@
         <Input
           value={selectedAnnouncement.as_path.join(', ')}
           class="col-span-2"
-          on:input={(e) => updateASPath2(selectedAnnouncement, e.target.value)} />
+          on:input={(e) => updateASPath(selectedAnnouncement, e.target.value)} />
       </div>
       <!-- <div class="grid grid-cols-3 items-center gap-4">
         <Label class="text-right col-span-1">ROA Origin ASN</Label>
@@ -659,7 +650,8 @@
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {#each config.roas as roa, index}
+          <!-- TODO: Fix -->
+          {#each config.roas ?? [] as roa, index}
             <Table.Row>
               <Table.Cell>{roa.prefix}</Table.Cell>
               <Table.Cell>{roa.origin}</Table.Cell>
@@ -697,6 +689,7 @@
                       </DropdownMenu.Item>
                       <DropdownMenu.Item
                         on:click={async () => {
+                          // @ts-ignore
                           config.roas.splice(index, 1);
                           config.roas = config.roas;
                           // Update ROA validity
