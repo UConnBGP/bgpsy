@@ -37,6 +37,7 @@
   export let showClearGraphModal: boolean;
   export let policyMap: Record<number, string>;
   export let imageURL: string;
+  export let graphLoadingState: string;
 
   let container: HTMLDivElement;
   let network: Network;
@@ -428,9 +429,14 @@
     nodes.update(selectedAS);
   }
 
-  $: if (simulationResults) {
+  $: if (simulationResults && network) {
     showLegend = true;
     network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
+  }
+
+  $: if (graphLoadingState === 'file' && network) {
+    network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
+    graphLoadingState = '';
   }
 
   function handleWheel(event: WheelEvent) {

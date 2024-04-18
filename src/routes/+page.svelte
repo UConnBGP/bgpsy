@@ -48,6 +48,7 @@
   let showClearGraphModal = false;
   let graphComponent: Graph;
   let annROAStates: string[];
+  let graphLoadingState = '';
 
   onMount(async () => {
     if (!exampleConfigsMap2[$page.url.hash]) {
@@ -118,6 +119,9 @@
 
     // Reset simulation results
     simulationResults = null;
+
+    // Emit message to graph
+    graphLoadingState = 'file';
   }
 
   async function loadExampleConfig(example: Config) {
@@ -125,6 +129,7 @@
     generateGraph(config);
     simulationResults = null;
     isDropdownOpen = false;
+    graphLoadingState = 'file';
 
     // Update ROA validity
     annROAStates = await getROAStates2(config.announcements, config.roas);
@@ -556,7 +561,8 @@
         bind:cpLinks
         bind:peerLinks
         bind:policyMap
-        bind:imageURL />
+        bind:imageURL
+        bind:graphLoadingState />
     </div>
   </div>
 
