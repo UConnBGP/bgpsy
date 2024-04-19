@@ -13,9 +13,11 @@
   import Info from 'lucide-svelte/icons/info';
   import * as Tabs from '$lib/components/ui/tabs';
   import * as Card from '$lib/components/ui/card';
+  import * as Tooltip from '$lib/components/ui/tooltip';
   import {
     ArrowLeftRight,
     Fullscreen,
+    Loader2,
     Pencil,
     Plus,
     Trash,
@@ -27,6 +29,7 @@
   import { countByValue, flyAndScale } from '$lib/utils';
   import type { FullItem } from 'vis-data/declarations/data-interface';
   import ErrorBanner from './error-banner.svelte';
+  import { toast } from 'svelte-sonner';
 
   export let nodes: DataSet<{}>;
   export let edges: DataSet<{}>;
@@ -36,8 +39,11 @@
   export let showModal: boolean;
   export let showClearGraphModal: boolean;
   export let policyMap: Record<number, string>;
+  export let roleMap: Record<number, string>;
   export let imageURL: string;
   export let graphLoadingState: string;
+  export let isLoading: boolean;
+  export let handleSubmit: () => Promise<void>;
 
   let container: HTMLDivElement;
   let network: Network;
@@ -68,7 +74,7 @@
   let nodeData: {} | null = null;
   let edgeData: {} | null = null;
   let contextMenuData = { show: false, x: 0, y: 0 };
-  let victimASN = null;
+  let victimASN: any | null = null;
   let newLinkType = null;
   let addingEdge = false;
   let addingCPLink = false;
@@ -415,7 +421,14 @@
       edgeData = null;
     });
 
-    console.log(nodes.get());
+    // TODO: MOVE SOMEWHRE ELSE
+    // Find victim when first initialized
+    const victims = Object.entries(roleMap)
+      .filter(([_, value]) => value === 'victim')
+      .map(([key, _]) => key);
+    if (victims.length > 0) {
+      victimASN = Number(victims[0]);
+    }
   });
 
   onDestroy(() => {
@@ -434,9 +447,11 @@
     network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
   }
 
-  $: if (graphLoadingState === 'file' && network) {
+  $: if ((graphLoadingState === 'file' || graphLoadingState === 'example') && network) {
     network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
     graphLoadingState = '';
+    selectedASN = null;
+    selectedLinkID = null;
   }
 
   function handleWheel(event: WheelEvent) {
@@ -446,7 +461,7 @@
       const newScale = network.getScale() * direction;
       network.moveTo({
         scale: newScale,
-        animation: { duration: 200, easingFunction: 'linear' }
+        animation: { duration: 50, easingFunction: 'linear' }
       });
     }
   }
@@ -454,12 +469,21 @@
   function addNode() {
     if (!newNodeId) {
       addASErrorMsg = 'AS Number is not entered';
+      toast.error(addASErrorMsg);
       return;
     }
 
     // Error if AS is negative
     if (newNodeId < 0) {
       addASErrorMsg = 'AS Number cannot be negative';
+      toast.error(addASErrorMsg);
+      return;
+    }
+
+    // Error if AS already exists
+    if (nodes.get(Number(newNodeId))) {
+      addASErrorMsg = `AS ${newNodeId} already exists`;
+      toast.error(addASErrorMsg);
       return;
     }
 
@@ -489,10 +513,12 @@
       const colorProp = { border: '#047857', background: '#34d399' };
       newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
       newNode.role = newASRole;
+      roleMap[Number(newNodeId)] = 'victim';
     } else if (newASRole === 'attacker') {
       const colorProp = { border: '#b91c1c', background: '#f87171' };
       newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
       newNode.role = newASRole;
+      roleMap[Number(newNodeId)] = 'attacker';
     }
 
     // Add node
@@ -555,6 +581,15 @@
 
     console.log('nodes after adding node:', nodes.get());
     console.log('edges after adding node:', edges.get());
+
+    // Since graph is changed, clear out simulation results
+    // simulationResults = null;
+    // imageURL = null;
+    // for (const node of nodes.get()) {
+    //   if (policyMap[Number(node.id)]) {
+    //     node.color = null;
+    //   }
+    // }
 
     // Refresh graph
     network.setData({ nodes, edges });
@@ -701,7 +736,6 @@
       nodes.update({ ...node, level: levels[node.id] || 1 });
     });
 
-    // network.setData({ nodes, edges });
     selectedASN = null;
     selectedAS = null;
     selectedASLevel = null;
@@ -740,15 +774,20 @@
 
         if (victimASN !== null && victimASN !== selectedASN) {
           nodes.update({ id: victimASN, role: null, color: null });
+          delete roleMap[victimASN];
         }
 
         victimASN = selectedASN;
+        roleMap[selectedASN] = 'victim';
       } else if (selectedASRole === 'attacker') {
         const colorProp = { border: '#b91c1c', background: '#f87171' };
         color = { ...colorProp, highlight: colorProp, hover: colorProp };
+        roleMap[selectedASN] = 'attacker';
       } else {
         color = null;
+        delete roleMap[selectedASN];
       }
+      console.log(roleMap);
       nodes.update({
         id: selectedASN,
         role: selectedASRole,
@@ -771,7 +810,7 @@
       } else {
         delete policyMap[selectedASN];
       }
-      console.log(policyMap);
+      // console.log(policyMap);
       nodes.update({ id: selectedASN, policy: selectedASPolicy });
       // network.setData({ nodes, edges });
     }
@@ -780,7 +819,18 @@
   function clearGraph() {
     nodes.clear();
     edges.clear();
+
+    // Clear policy and role maps and links
+    policyMap = {};
+    roleMap = {};
+    cpLinks = [];
+    peerLinks = [];
+
+    // Reset variables
     imageURL = '';
+    selectedASN = null;
+    selectedLinkID = null;
+    simulationResults = null;
   }
 
   function handleContextMenuAction(action: string) {
@@ -879,17 +929,20 @@
 
   function availableNodes(array: any[], index: number, asnToIgnore: number | null = null) {
     // console.log(asnToIgnore);
-    const avail = nodes.get().filter((node: Node) => {
-      return (!array.includes(node.id) || array[index] === node.id) && node.id !== asnToIgnore;
-    });
+    const avail = nodes
+      .get()
+      .filter((node: Node) => {
+        return (!array.includes(node.id) || array[index] === node.id) && node.id !== asnToIgnore;
+      })
+      .sort((a: Node, b: Node) => Number(a.id) - Number(b.id));
     // console.log(avail);
     return avail;
   }
 
   function getRelationships(asn) {
-    const customers = [];
-    const providers = [];
-    const peers = [];
+    let customers = [];
+    let providers = [];
+    let peers = [];
 
     edges.forEach((edge) => {
       if (edge.from === asn) {
@@ -1124,7 +1177,7 @@
     </Dialog.Header>
     <div>
       <div class="grid gap-4 py-4">
-        <ErrorBanner message={addASErrorMsg} open={addASErrorMsg !== ''} />
+        <!-- <ErrorBanner message={addASErrorMsg} open={addASErrorMsg !== ''} /> -->
 
         <div class="grid grid-cols-5 items-center gap-4">
           <Label class="text-right">AS Number</Label>
@@ -1366,75 +1419,7 @@
   </Dialog.Content>
 </Dialog.Root>
 
-<!-- <Modal bind:showModal={showAddEdgeModal} on:close={() => (showAddEdgeModal = false)}>
-  <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Connection</div>
-
-  <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200">
-    <li class="me-2">
-      <a
-        href="#"
-        class="inline-block p-4 rounded-t-lg {edgeType === 'customer-provider'
-          ? 'text-blue-600 bg-gray-50'
-          : 'hover:text-gray-600 hover:bg-gray-50'}"
-        on:click|preventDefault={() => (edgeType = 'customer-provider')}>Customer-Provider</a
-      >
-    </li>
-    <li class="me-2">
-      <a
-        href="#"
-        class="inline-block p-4 rounded-t-lg {edgeType === 'peer'
-          ? 'text-blue-600 bg-gray-50'
-          : 'hover:text-gray-600 hover:bg-gray-50'}"
-        on:click|preventDefault={() => (edgeType = 'peer')}>Peer</a
-      >
-    </li>
-  </ul>
-
-  {#if edgeType === 'customer-provider'}
-    <input
-      type="number"
-      bind:value={newEdgeFrom}
-      placeholder="From ASN"
-      class="p-1 border border-gray-300 rounded"
-    />
-    <input
-      type="number"
-      bind:value={newEdgeTo}
-      placeholder="To ASN"
-      class="p-1 border border-gray-300 rounded"
-    />
-  {:else if edgeType === 'peer'}
-    <input
-      type="number"
-      bind:value={newPeer1}
-      placeholder="First Peer"
-      class="p-1 border border-gray-300 rounded"
-    />
-    <input
-      type="number"
-      bind:value={newPeer2}
-      placeholder="Second Peer"
-      class="p-1 border border-gray-300 rounded"
-    />
-  {/if}
-
-  <button on:click={addEdge} class="bg-emerald-500 text-white p-2 rounded">Add</button>
-</Modal> -->
-
-<!-- <Modal bind:showModal={showConfirmAddEdgeModal} on:close={() => (showConfirmAddEdgeModal = false)}>
-  <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Edge</div>
-  <label>
-    <input type="radio" value="customer-provider" bind:group={edgeType} />
-    Customer-Provider
-  </label>
-  <label>
-    <input type="radio" value="peer" bind:group={edgeType} />
-    Peer-Peer
-  </label>
-  <button on:click={addEdge2} class="bg-emerald-500 text-white p-2 rounded">Save</button>
-</Modal> -->
-
-<h2 class="text-sm font-medium leading-6 mb-2">Graph</h2>
+<!-- <h2 class="text-sm font-medium leading-6 mb-2">Graph</h2> -->
 
 <!-- Action Button -->
 <div class="flex space-x-2">
@@ -1445,106 +1430,165 @@
     <!-- <Plus class="mr-2 h-4 w-4" /> -->
     Add AS
   </Button>
-  <Button
-    on:click={addCPLink}
-    class={addingCPLink
-      ? 'bg-emerald-400 hover:bg-emerald-400/90'
-      : 'bg-emerald-500 hover:bg-emerald-500/90'}
-    size="sm">
-    <!-- <Plus class="mr-2 h-4 w-4" /> -->
-    Draw Customer-Provider Link
-  </Button>
-  <Button
-    on:click={addPeerLink}
-    class={addingPeerLink
-      ? 'bg-emerald-400 hover:bg-emerald-400/90'
-      : 'bg-emerald-500 hover:bg-emerald-500/90'}
-    size="sm">
-    <!-- <Plus class="mr-2 h-4 w-4" /> -->
-    Draw Peer Link
-  </Button>
 
-  <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
-    <Ban class="size-4" />
-    <!-- Clear Graph -->
-  </Button>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button
+        on:click={addCPLink}
+        class={addingCPLink
+          ? 'bg-emerald-300 hover:bg-emerald-300/90'
+          : 'bg-emerald-500 hover:bg-emerald-500/90'}
+        size="sm">
+        Draw Customer-Provider Link
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Create a link by dragging mouse from a provider AS to customer AS</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
-  <Button
-    variant="outline"
-    size="sm"
-    on:click={() =>
-      network.moveTo({
-        scale: network.getScale() * 1.5,
-        animation: { duration: 200, easingFunction: 'linear' }
-      })}>
-    <ZoomIn class="size-5" />
-  </Button>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button
+        on:click={addPeerLink}
+        class={addingPeerLink
+          ? 'bg-emerald-300 hover:bg-emerald-300/90'
+          : 'bg-emerald-500 hover:bg-emerald-500/90'}
+        size="sm">
+        Draw Peer Link
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Create a link by dragging mouse from a peer AS to another</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
-  <Button
-    variant="outline"
-    size="sm"
-    on:click={() =>
-      network.moveTo({
-        scale: network.getScale() / 1.5,
-        animation: { duration: 200, easingFunction: 'linear' }
-      })}>
-    <ZoomOut class="size-5" />
-  </Button>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <!-- Clear Graph -->
+      <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
+        <Ban class="size-4" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Clear the graph</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
-  <Button
-    variant="outline"
-    size="sm"
-    on:click={() => network.fit({ animation: { duration: 200, easingFunction: 'linear' } })}>
-    <Fullscreen class="size-5" />
-  </Button>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button
+        variant="outline"
+        size="sm"
+        on:click={() =>
+          network.moveTo({
+            scale: network.getScale() * 1.5,
+            animation: { duration: 200, easingFunction: 'linear' }
+          })}>
+        <ZoomIn class="size-5" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Zoom in</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
+
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button
+        variant="outline"
+        size="sm"
+        on:click={() =>
+          network.moveTo({
+            scale: network.getScale() / 1.5,
+            animation: { duration: 200, easingFunction: 'linear' }
+          })}>
+        <ZoomOut class="size-5" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Zoom out</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
+
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button
+        variant="outline"
+        size="sm"
+        on:click={() => network.fit({ animation: { duration: 200, easingFunction: 'linear' } })}>
+        <Fullscreen class="size-5" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Center graph</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
   {#if simulationResults}
-    <!-- Legend -->
-    <Popover.Root open={showLegend}>
-      <Popover.Trigger>
-        <Button variant="outline" size="sm">
-          <Info class="size-5" />
-        </Button>
-      </Popover.Trigger>
-      <Popover.Content class="w-80">
-        <table class="text-center">
-          <tr class="border-0">
-            <td>(For most specific prefix only)</td>
-          </tr>
-          <tr>
-            <td class="bg-gradient-to-r from-red-500 to-white border border-black">
-              &#128520; ATTACKER SUCCESS &#128520;
-            </td>
-            <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 0)}</td>
-          </tr>
-          <tr>
-            <td class="bg-gradient-to-r from-green-400 to-white border border-black">
-              &#128519; VICTIM SUCCESS &#128519;
-            </td>
-            <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 1)}</td>
-          </tr>
-          <tr>
-            <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
-              &#10041; DISCONNECTED &#10041;
-            </td>
-            <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 2)}</td>
-          </tr>
-        </table>
-      </Popover.Content>
-    </Popover.Root>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <!-- Legend -->
+        <Popover.Root
+          open={showLegend}
+          onOutsideClick={() => {
+            showLegend = false;
+          }}>
+          <Popover.Trigger>
+            <Button
+              variant="outline"
+              size="sm"
+              on:click={() => {
+                showLegend = !showLegend;
+              }}>
+              <Info class="size-5" />
+            </Button>
+          </Popover.Trigger>
+          <Popover.Content class="w-80">
+            <table class="text-center">
+              <tr class="border-0">
+                <td>(For most specific prefix only)</td>
+              </tr>
+              <tr>
+                <td class="bg-gradient-to-r from-red-500 to-white border border-black">
+                  &#128520; ATTACKER SUCCESS &#128520;
+                </td>
+                <td class="px-4 border border-black"
+                  >{countByValue(simulationResults.outcome, 0)}</td>
+              </tr>
+              <tr>
+                <td class="bg-gradient-to-r from-green-400 to-white border border-black">
+                  &#128519; VICTIM SUCCESS &#128519;
+                </td>
+                <td class="px-4 border border-black"
+                  >{countByValue(simulationResults.outcome, 1)}</td>
+              </tr>
+              <tr>
+                <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
+                  &#10041; DISCONNECTED &#10041;
+                </td>
+                <td class="px-4 border border-black"
+                  >{countByValue(simulationResults.outcome, 2)}</td>
+              </tr>
+            </table>
+          </Popover.Content>
+        </Popover.Root>
+      </Tooltip.Trigger>
+      <Tooltip.Content>
+        <p>Simulation results legend</p>
+      </Tooltip.Content>
+    </Tooltip.Root>
   {/if}
 </div>
 
 <!-- Graph -->
 <div
   bind:this={container}
-  class={`mt-2 w-full h-[calc(100vh-205px)] overflow-auto ${
-    addingEdge ? 'cursor-crosshair' : 'cursor-auto'
-  }`}>
+  class={`mt-2 w-full h-[75vh] overflow-auto ${addingEdge ? 'cursor-crosshair' : 'cursor-auto'}`}>
 </div>
 
 {#if selectedASN !== null}
-  <Card.Root class="mx-auto w-full relative">
+  <Card.Root class="mx-auto lg:max-w-[50vw] max-w-full relative mb-4">
     <Card.Header>
       <Card.Title>Selected AS: {selectedASN}</Card.Title>
       <button

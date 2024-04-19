@@ -3,20 +3,26 @@
   import * as Table from './ui/table';
   import * as Dialog from './ui/dialog';
   import * as DropdownMenu from './ui/dropdown-menu';
-  import * as Select from './ui/select';
+  import * as Accordion from '$lib/components/ui/accordion';
+  import { Textarea } from '$lib/components/ui/textarea';
   import { Input } from './ui/input';
   import { Label } from './ui/label';
   import { Button } from './ui/button';
   import { Switch } from './ui/switch';
   import { Checkbox } from './ui/checkbox';
   import { isAnnouncementEmpty } from '../utils';
+  import * as Tooltip from '$lib/components/ui/tooltip';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Plus from 'lucide-svelte/icons/plus';
   import MoreHorizontal from 'lucide-svelte/icons/more-horizontal';
+  import { toast } from 'svelte-sonner';
+  import { parseCIDR } from 'ipaddr.js';
+  import { HelpCircle } from 'lucide-svelte';
 
   export let config: Config;
   export let annROAStates: string[] = [];
+  export let roleMap: Record<number, string>;
 
   let showAddAnnouncementModal = false;
   let showEditAnnouncementModal = false;
@@ -52,14 +58,34 @@
       config.announcements = [];
     }
 
-    // Announcement must not be filled in
-    if (isAnnouncementEmpty(newAnnouncement)) {
+    // if (isAnnouncementEmpty(newAnnouncement)) {
+    //   return;
+    // }
+
+    // Prefix must be specified
+    if (newAnnouncement.prefix === '') {
+      toast.error('Prefix is not specified');
+      return;
+    }
+
+    // Check if prefix is a valid IP address
+    try {
+      const _ = parseCIDR(newAnnouncement.prefix);
+    } catch {
+      toast.error(`${newAnnouncement.prefix} is not a valid CIDR prefix`);
       return;
     }
 
     // Seed ASN must be populated
     // @ts-ignore
     if (newAnnouncement.seed_asn === '') {
+      toast.error('Announced by ASN is not specified');
+      return;
+    }
+
+    // AS path must be populated
+    if (!newAnnouncementCalculateASPath && newAnnouncement.as_path.length === 0) {
+      toast.error('AS Path cannot be empty');
       return;
     }
 
@@ -407,35 +433,22 @@
 
 <!-- Form -->
 <form class="space-y-4">
-  <!-- Name -->
-  <div>
-    <label for="name" class="block text-sm font-medium leading-6 mb-2">Name</label>
-    <!-- <input
-      type="text"
-      bind:value={config.name}
-      placeholder="Name"
-      class="p-2 border border-gray-300 rounded w-full"
-      id="name"
-    /> -->
-    <Input type="text" bind:value={config.name} placeholder="Name" id="name" />
-  </div>
-
-  <!-- Description -->
-  <div>
-    <label for="desc" class="block text-sm font-medium leading-6 mb-2">Description</label>
-    <!-- <input
-      type="text"
-      bind:value={config.desc}
-      placeholder="Description"
-      class="p-2 border border-gray-300 rounded w-full"
-      id="destination"
-    /> -->
-    <Input type="text" bind:value={config.desc} placeholder="Description" id="desc" />
-  </div>
-
   <!-- Scenario -->
   <div>
-    <label for="scenario" class="block text-sm font-medium leading-6 mb-2">Scenario</label>
+    <div class="flex flex-row items-center space-x-1 mb-2">
+      <label for="scenario" class="block text-sm font-medium leading-6">Scenario</label>
+
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          <HelpCircle class="size-4" />
+        </Tooltip.Trigger>
+        <Tooltip.Content>
+          <p>
+            Choose a predefined scenario or build your own with <br />custom announcements and ROAs
+          </p>
+        </Tooltip.Content>
+      </Tooltip.Root>
+    </div>
     <select
       bind:value={config.scenario}
       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
@@ -443,6 +456,30 @@
         if (config.scenario !== null) {
           config.announcements = [];
           config.roas = [];
+        } else {
+          // By default, create an announcement and ROA with the victim (if it exists)
+
+          // Get victim array (should just be one value)
+          const victims = Object.entries(roleMap)
+            .filter(([_, value]) => value === 'victim')
+            .map(([key, _]) => key);
+
+          // Create corresponding announcement and ROA
+          if (victims.length > 0) {
+            const victimASN = Number(victims[0]);
+            const ann = {
+              prefix: '1.2.0.0/16', // Sample prefix
+              as_path: [victimASN],
+              seed_asn: victimASN
+            };
+            const roa = {
+              prefix: '1.2.0.0/16', // Sample prefix
+              origin: victimASN,
+              max_length: null
+            };
+            config.announcements = [ann];
+            config.roas = [roa];
+          }
         }
       }}>
       <option value={null}>Custom Scenario</option>
@@ -455,34 +492,26 @@
       <option value="NonRoutedSuperprefixPrefixHijack">Non-Routed Superprefix Prefix Hijack</option>
       <option value="AccidentalRouteLeak">Accidental Route Leak</option>
     </select>
-    <!-- <Select.Root
-      selected={{ value: config.scenario ?? null, label: config.scenario ?? 'foo' }}
-      on:change={() => {}}
-    >
-      <Select.Trigger>
-        <Select.Value placeholder="Scenario" />
-      </Select.Trigger>
-      <Select.Content>
-        <Select.Item value="">Custom Scenario</Select.Item>
-        <Select.Item value="SubprefixHijack">Subprefix Hijack</Select.Item>
-        <Select.Item value="ValidPrefix">Valid Prefix</Select.Item>
-        <Select.Item value="SuperprefixPrefixHijack">Superprefix Prefix Hijack</Select.Item>
-        <Select.Item value="NonRoutedPrefixHijack">Non-Routed Prefix Hijack</Select.Item>
-        <Select.Item value="NonRoutedSuperprefixHijack">Non-Routed Superprefix Hijack</Select.Item>
-        <Select.Item value="NonRoutedSuperprefixPrefixHijack"
-          >Non-Routed Superprefix Prefix Hijack</Select.Item
-        >
-        <Select.Item value="AccidentalRouteLeak">Accidental Route Leak</Select.Item>
-      </Select.Content>
-      <Select.Input />
-    </Select.Root> -->
   </div>
 
   <!-- Show attack modifier when custom scenario is selected -->
-  {#if config.scenario !== null}
+  {#if config.scenario !== null && config.scenario !== 'ValidPrefix' && config.scenario !== 'AccidentalRouteLeak'}
     <div>
-      <label for="attack-modifier" class="block text-sm font-medium leading-6 mb-2"
-        >Attack Modifier</label>
+      <div class="flex flex-row items-center space-x-1 mb-2">
+        <label for="attack-modifier" class="block text-sm font-medium leading-6">
+          Attack Modifier
+        </label>
+
+        <Tooltip.Root>
+          <Tooltip.Trigger>
+            <HelpCircle class="size-4" />
+          </Tooltip.Trigger>
+          <Tooltip.Content>
+            <p>Extend the scenario with a preprocessing function</p>
+          </Tooltip.Content>
+        </Tooltip.Root>
+      </div>
+
       <select
         bind:value={config.scenario_modifier}
         class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
@@ -709,4 +738,25 @@
       </Table.Root>
     </div>
   {/if}
+
+  <Accordion.Root>
+    <Accordion.Item value="item-1">
+      <Accordion.Trigger class="text-sm pt-2">Diagram Details</Accordion.Trigger>
+      <Accordion.Content class="overflow-visible">
+        <div class="space-y-2 w-auto">
+          <!-- Name -->
+          <div>
+            <label for="name" class="block text-sm font-medium leading-6 mb-2">Name</label>
+            <Input type="text" bind:value={config.name} placeholder="Name" id="name" />
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label for="desc" class="block text-sm font-medium leading-6 mb-2">Description</label>
+            <Textarea placeholder="Description" bind:value={config.desc} />
+          </div>
+        </div>
+      </Accordion.Content>
+    </Accordion.Item>
+  </Accordion.Root>
 </form>
