@@ -284,7 +284,7 @@
       }
 
       if (
-        node.policy === 'bgp' ||
+        // node.policy === 'bgp' ||
         node.policy == 'rov' ||
         node.policy == 'aspa' ||
         node.policy == 'bgpsec' ||
@@ -307,7 +307,8 @@
       asn_policy_map: asnPolicyMap,
       propagation_rounds: propagationRounds,
       graph: {
-        ...config.graph,
+        // TODO: Figure out how to handle prop ranks
+        // ...config.graph,
         cp_links: cpLinks,
         peer_links: peerLinks
       }
@@ -542,7 +543,8 @@
   <!-- Two columns for form and graph -->
   <div class="flex md:flex-row flex-col md:space-x-4">
     <!-- class="basis-1/3 md:order-1 order-2" -->
-    <div bind:this={firstColumn} class="order-2 md:order-1 w-[33vw] md:resizable">
+    <!-- w-full might not do anything -->
+    <div bind:this={firstColumn} class="order-2 md:order-1 w-full md:w-[33vw] md:resizable">
       <!-- Examples dropdown -->
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild let:builder>
@@ -614,7 +616,7 @@
     <!-- <div class="overflow-hidden resize-x min-w-[33vw] max-w-[33vw]"></div> -->
     <div class="resizer order-2 md:visible invisible bg-neutral-100" on:mousedown={startDrag}></div>
 
-    <div class="basis-2/3 order-3 md:order-2">
+    <div class="basis-2/3 order-1 md:order-2">
       <Graph
         {nodes}
         {edges}

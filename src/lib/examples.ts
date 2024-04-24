@@ -7,6 +7,7 @@ export const exampleConfigsMap: Record<string, string> = {
   'Valley Free (Gao Rexford) with ROV': 'valley-free',
   'Accidental Route Leak with OTC': 'accidental-route-leak',
   'Origin Prefix Hijack with Pathend': 'origin-prefix-hijack',
+  'Shortest Path Export All with ASPA (Partial Adoption)': 'shortest-path-export-all-partial',
   'Shortest Path Export All with ASPA': 'shortest-path-export-all'
 };
 
@@ -17,7 +18,8 @@ export const exampleConfigsMap2: Record<string, string> = {
   '#valley-free': 'Valley Free (Gao Rexford) with ROV',
   '#accidental-route-leak': 'Accidental Route Leak with OTC',
   '#origin-prefix-hijack': 'Origin Prefix Hijack with Pathend',
-  '#shortest-path-export-all': 'Shortest Path Export All with ASPA'
+  '#shortest-path-export-all': 'Shortest Path Export All with ASPA',
+  '#shortest-path-export-all-partial': 'Shortest Path Export All with ASPA (Partial Adoption)'
 };
 
 export const exampleConfigs: Record<string, Config> = {
@@ -184,6 +186,50 @@ export const exampleConfigs: Record<string, Config> = {
       '1': 'pathend',
       '777': 'pathend'
     },
+    graph: {
+      cp_links: [
+        [1, 666],
+        [2, 666],
+        [2, 777],
+        [4, 777],
+        [5, 1],
+        [8, 1],
+        [8, 2],
+        [9, 4],
+        [10, 777],
+        [11, 8],
+        [11, 9],
+        [11, 10],
+        [12, 10]
+      ],
+      peer_links: [
+        [8, 9],
+        [9, 10],
+        [3, 9]
+      ],
+      propagation_ranks: [
+        [666, 777],
+        [1, 2, 3, 4],
+        [5, 8, 9, 10],
+        [11, 12]
+      ]
+    }
+  },
+  'Shortest Path Export All with ASPA (Partial Adoption)': {
+    name: 'Shortest Path Export All with ASPA',
+    desc: 'Shortest path export all against ASPA from a customer\nAS 5 fails to detect the shortest path export all',
+    scenario: 'PrefixHijack',
+    scenario_modifier: 'shortest_path_export_all_hijack',
+    announcements: [],
+    attacker_asns: [666],
+    victim_asns: [777],
+    asn_policy_map: {
+      '2': 'aspa',
+      '5': 'aspa',
+      '10': 'aspa',
+      '777': 'aspa'
+    },
+    propagation_rounds: 1,
     graph: {
       cp_links: [
         [1, 666],
