@@ -495,6 +495,8 @@
 
 <svelte:head>
   <title>BGPy</title>
+  <link rel="preconnect" href="https://rsms.me/" />
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
 </svelte:head>
 
 <main bind:this={mainColumn} class={cn('w-full mx-auto p-8', dragging ? 'select-none' : '')}>
