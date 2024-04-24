@@ -39,9 +39,8 @@ series = {CSET '23}
     </Dialog.Header>
 
     <div class="flex overflow-hidden gap-x-1 bg-slate-50 rounded-md text-secondary-foreground">
-      <pre class="text-sm font-mono overflow-auto my-2 ml-2 text-secondary-foreground">
-        {citation}
-      </pre>
+      <pre
+        class="text-sm font-mono overflow-auto my-2 ml-2 text-secondary-foreground">{citation}</pre>
 
       <div>
         <Button
