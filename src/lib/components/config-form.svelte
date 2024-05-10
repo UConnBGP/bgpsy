@@ -218,7 +218,7 @@
 
   function updateASPath(ann: Announcement, value: string) {
     ann.as_path = value
-      .split(',')
+      .split(/,|-/) // Split by either comma or comma
       .map((asn) => parseInt(asn.trim()))
       .filter((asn) => !isNaN(asn));
   }
@@ -739,7 +739,7 @@
     </div>
   {/if}
 
-  <Accordion.Root>
+  <Accordion.Root value="item-1">
     <Accordion.Item value="item-1">
       <Accordion.Trigger class="text-sm pt-2">Diagram Details</Accordion.Trigger>
       <Accordion.Content class="overflow-visible">

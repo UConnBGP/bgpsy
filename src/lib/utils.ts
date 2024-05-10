@@ -10,14 +10,11 @@ export function isAnnouncementEmpty(ann: Announcement): boolean {
     ann.as_path.length === 0 &&
     /** @ts-expect-error: seed_asn is not a string  */
     ann.seed_asn === ''
-    // ann.roa_valid_length === false &&
-    /** @ts-expect-error: roa_origin is not a string  */
-    // ann.roa_origin === ''
   );
 }
 
 export function listToIndexJsonReversed(list: number[][]) {
-  const result = {};
+  const result: Record<number, number> = {};
   const listLength = list.length;
   list.forEach((sublist, index) => {
     sublist.forEach((item) => {
@@ -30,12 +27,12 @@ export function listToIndexJsonReversed(list: number[][]) {
 
 export function getPropagationRanks(graph: Graph) {
   // const graph = config.graph;
-  let asDict = new Map();
+  const asDict = new Map();
 
   // Initialize ASes and their relationships
   graph.cp_links.forEach((cp_link) => {
-    let providerASN = cp_link[0];
-    let customerASN = cp_link[1];
+    const providerASN = cp_link[0];
+    const customerASN = cp_link[1];
 
     if (!asDict.has(providerASN)) {
       asDict.set(providerASN, {
@@ -57,8 +54,8 @@ export function getPropagationRanks(graph: Graph) {
   });
 
   graph.peer_links.forEach((peer_link) => {
-    let asn1 = peer_link[0];
-    let asn2 = peer_link[1];
+    const asn1 = peer_link[0];
+    const asn2 = peer_link[1];
 
     if (!asDict.has(asn1)) {
       asDict.set(asn1, { providers: new Set(), customers: new Set(), propagationRank: null });
@@ -70,11 +67,11 @@ export function getPropagationRanks(graph: Graph) {
 
   // Assign propagation ranks
   let maxRank = 0;
-  function assignRanks(asn, rank) {
-    let asInfo = asDict.get(asn);
+  function assignRanks(asn: number, rank: number) {
+    const asInfo = asDict.get(asn);
     if (asInfo.propagationRank === null || asInfo.propagationRank < rank) {
       asInfo.propagationRank = rank;
-      asInfo.providers.forEach((providerASN) => {
+      asInfo.providers.forEach((providerASN: number) => {
         assignRanks(providerASN, rank + 1);
       });
       maxRank = Math.max(maxRank, rank);
@@ -89,9 +86,8 @@ export function getPropagationRanks(graph: Graph) {
   });
 
   // Extract propagation ranks into an object
-  let propagationRanks = {};
+  const propagationRanks: Record<number, number> = {};
   asDict.forEach((asInfo, asn) => {
-    // propagationRanks[asn] = asInfo.propagationRank + 1;
     propagationRanks[asn] = maxRank + 1 - asInfo.propagationRank;
   });
 
@@ -100,7 +96,10 @@ export function getPropagationRanks(graph: Graph) {
 }
 
 // TODO: This is duplicate, merge with function in ConfigForm
-export async function getROAStates2(announcements: Announcement[], roas: ROA[]): Promise<string[]> {
+export async function fetchROAStates(
+  announcements: Announcement[],
+  roas: ROA[]
+): Promise<string[]> {
   // return Promise.all(config.announcements.forEach((ann) => checkAnnValidity));
   const states = [];
   for (const ann of announcements) {
@@ -136,12 +135,14 @@ export async function checkAnnValidity2(ann: Announcement, roas: ROA[]): Promise
 }
 
 // Function to filter JSON object by value
-export function countByValue(jsonObject: object, filterValue) {
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+export function countByValue(jsonObject: object, filterValue: any) {
   // Convert the JSON object to an array of [key, value] pairs
   const entries = Object.entries(jsonObject);
 
   // Filter the entries based on the value
-  const filteredEntries = entries.filter(([key, value]) => value === filterValue);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const filteredEntries = entries.filter(([_, value]) => value === filterValue);
 
   // Convert the filtered entries back into an object
   const filteredObject = Object.fromEntries(filteredEntries);
@@ -152,6 +153,8 @@ export function countByValue(jsonObject: object, filterValue) {
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+// SHADCN HELPER FUNCS
 
 type FlyAndScaleParams = {
   y?: number;

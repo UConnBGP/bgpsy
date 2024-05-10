@@ -3,7 +3,6 @@
   import { Network, DataSet, type Options, type Node } from 'vis-network/standalone';
   import Ban from 'lucide-svelte/icons/ban';
   import { getPropagationRanks } from '$lib';
-  import * as ContextMenu from './ui/context-menu';
   import * as Dialog from './ui/dialog';
   import * as AlertDialog from './ui/alert-dialog';
   import { Input } from './ui/input';
@@ -17,18 +16,14 @@
   import {
     ArrowLeftRight,
     Fullscreen,
-    Loader2,
     Pencil,
     Plus,
-    Trash,
     Trash2,
     X,
     ZoomIn,
     ZoomOut
   } from 'lucide-svelte';
   import { countByValue, flyAndScale } from '$lib/utils';
-  import type { FullItem } from 'vis-data/declarations/data-interface';
-  import ErrorBanner from './error-banner.svelte';
   import { toast } from 'svelte-sonner';
 
   export let nodes: DataSet<{}>;
@@ -36,18 +31,13 @@
   export let simulationResults: {} | null;
   export let cpLinks: number[][];
   export let peerLinks: number[][];
-  export let showModal: boolean;
-  export let showClearGraphModal: boolean;
   export let policyMap: Record<number, string>;
   export let roleMap: Record<number, string>;
   export let imageURL: string;
   export let graphLoadingState: string;
-  export let isLoading: boolean;
-  export let handleSubmit: () => Promise<void>;
 
   let container: HTMLDivElement;
   let network: Network;
-  let options: Options;
   let selectedAS: any | null = null;
   let selectedASN: number | null = null;
   let selectedASLevel: any | null = null;
@@ -57,17 +47,19 @@
   let selectedLinkID: string | null = null;
   let selectedASN2: any | null = null;
   let selectedLinkID2: string | null = null;
+  let showModal = false;
+  let showClearGraphModal = false;
   let showAddEdgeModal = false;
   let showRenameASModal = false;
   let showLegend = false;
-  let newNodeId: any;
+  let newNodeId: number | string;
   let renamedASN: number;
   let newASPolicy = 'bgp';
   let newASRole = '';
-  let newEdgeFrom;
-  let newEdgeTo;
-  let newPeer1;
-  let newPeer2;
+  let newEdgeFrom: number | string;
+  let newEdgeTo: number | string;
+  let newPeer1: number | string;
+  let newPeer2: number | string;
   let edgeType = 'cp'; // Default edge type
   let callbackFunc;
   let callbackData;
@@ -75,242 +67,238 @@
   let edgeData: {} | null = null;
   let contextMenuData = { show: false, x: 0, y: 0 };
   let victimASN: any | null = null;
-  let newLinkType = null;
+  let newLinkType: string | null = null;
   let addingEdge = false;
   let addingCPLink = false;
   let addingPeerLink = false;
   let rightClick = false;
-  let newASCustomers = [];
+  let newASCustomers: any[] = [];
   let newASProviders = Array<any>();
-  let newASPeers = [];
+  let newASPeers: any[] = [];
   let selectedASRelationships = {
     customers: Array<number | null>(),
     providers: Array<number | null>(),
     peers: Array<number | null>()
   };
   let addASErrorMsg = '';
-
-  onMount(() => {
-    // Configuration for the network
-    options = {
-      // configure: true,
-      nodes: {
-        shape: 'custom',
-        size: 30,
-        font: {
-          size: 20
-        },
-        borderWidth: 2,
-        // color: {
-        //   background: '#38bdf8'
-        // },
-
-        ctxRenderer: function ({ ctx, id, x, y, state: { selected, hover }, style, label }) {
-          ctx.save();
-
-          // console.log(`Rendering ${label}`);
-
-          // Define the data for the table (replace with dynamic data if needed)
-          const header = ['Local RIB'];
-          // const rows = [
-          //   ['/16', '1, 2, 777', '😇'],
-          //   ['/24', '666', '😈']
-          // ];
-          let rows = [];
-          if (simulationResults && simulationResults.local_ribs[label]) {
-            rows = simulationResults.local_ribs[label].map(({ type, mask, as_path }) => {
-              return [mask, as_path.join(', '), type === 'attacker' ? '😈' : '😇'];
-            });
-          }
-
-          const fontSize = 14; // Font size for the table
-          ctx.font = `${fontSize}px sans-serif`;
-
-          // Measure text to determine table size
-          let maxTextWidth = 0;
-          let totTextWidth = 0;
-
-          let maxWidths = [0, 0, 0];
-          for (let i = 0; i < rows.length; i++) {
-            let width = ctx.measureText(rows[i][0]).width + 5;
-            maxWidths[0] = Math.max(maxWidths[0], width);
-
-            width = ctx.measureText(rows[i][1]).width + 5;
-            maxWidths[1] = Math.max(maxWidths[1], width);
-
-            width = ctx.measureText(rows[i][2]).width + 5;
-            maxWidths[2] = Math.max(maxWidths[2], width);
-          }
-
-          // const cellWidth = maxTextWidth + 0; // Width of each cell
-          const cellHeight = fontSize + 10; // Height of each cell
-          const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0); // Total table width cellWidth * 3
-          const tableHeight = cellHeight * (rows.length + 1); // Total table height
-          const r = Math.max(30, tableWidth / 1.7); // Radius of the circle
-
-          let nodePolicy = 'BGP';
-          if (id in policyMap) {
-            nodePolicy = policyMap[id].toLowerCase();
-
-            // Format policy
-            if (
-              nodePolicy === 'bgp' ||
-              nodePolicy === 'rov' ||
-              nodePolicy === 'aspa' ||
-              nodePolicy === 'otc'
-            ) {
-              nodePolicy = nodePolicy.toUpperCase();
-            } else if (nodePolicy === 'pathend') {
-              nodePolicy = 'Pathend';
-            } else if (nodePolicy === 'bgpsec') {
-              nodePolicy = 'BGPSec';
-            }
-          }
-
-          // Clear previous path
-          ctx.beginPath();
-
-          if (nodePolicy === 'BGP') {
-            // Draw a circle
-            ctx.arc(x, y, r, 0, 2 * Math.PI, false);
-          } else {
-            // Draw an octagon
-            const angle = (2 * Math.PI) / 8; // Octagon angle
-            ctx.moveTo(x + r * Math.cos(0), y + r * Math.sin(0));
-            for (let i = 1; i < 8; i++) {
-              ctx.lineTo(x + r * Math.cos(angle * i), y + r * Math.sin(angle * i));
-            }
-            ctx.closePath();
-          }
-
-          // Style for shape
-          ctx.fillStyle = style.color;
-          ctx.fill();
-          ctx.strokeStyle = '#003366'; // Dark blue border
-          ctx.lineWidth = selected || hover ? 4 : 2;
-          ctx.stroke();
-
-          // Draw the node value inside the circle at the top
-          ctx.fillStyle = 'black';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-
-          if (
-            simulationResults &&
-            simulationResults.local_ribs[label] &&
-            simulationResults.local_ribs[label].length > 0
-          ) {
-            ctx.fillText(label, x, y - tableHeight / 1.5);
-            ctx.fillText(nodePolicy, x, y - tableHeight / 2.75);
-          } else {
-            ctx.fillText(label, x, y - tableHeight / 2);
-            ctx.fillText(nodePolicy, x, y + tableHeight / 2);
-          }
-
-          // Draw the table
-          const startX = x - tableWidth / 2;
-          const startY = y - tableHeight / 2;
-          ctx.strokeStyle = 'black';
-          ctx.lineWidth = 1;
-
-          // Draw header
-          ctx.fillStyle = 'black';
-
-          // Draw rows
-          for (let i = 0; i < rows.length; i++) {
-            let prevWidth = startX;
-            for (let j = 0; j < rows[i].length; j++) {
-              const cell = rows[i][j];
-              // const width = cellWidth;
-              // const width = ctx.measureText(cell).width + 5;
-              const width = maxWidths[j];
-              // const cellX = startX + j * width;
-              const cellX = prevWidth;
-              const cellY = startY + (i + 1) * cellHeight;
-              // ctx.fillStyle = 'white';
-              // ctx.fillRect(cellX, cellY, width, cellHeight);
-              ctx.strokeRect(cellX, cellY, width, cellHeight);
-              ctx.fillStyle = 'black';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(cell, cellX + width / 2, cellY + cellHeight / 2);
-              prevWidth += width;
-            }
-          }
-
-          ctx.restore();
-          return {
-            drawNode: null,
-            nodeDimensions: { width: r * 2, height: r * 2 }
-          };
-        }
+  let options: Options = {
+    // Configuration for vis-network
+    // configure: true,
+    nodes: {
+      shape: 'custom',
+      size: 30,
+      font: {
+        size: 20
       },
-      layout: {
-        hierarchical: {
-          enabled: true,
-          levelSeparation: 200,
-          nodeSpacing: 200,
-          sortMethod: 'directed'
-        }
-      },
-      edges: {
-        width: 2
-      },
-      manipulation: {
-        enabled: false,
-        addEdge: (data, callback) => {
-          // Prevent adding edge to same node
-          if (data.to === data.from) {
-            newLinkType = null;
-            network.disableEditMode();
-            addingEdge = false;
-            addingCPLink = false;
-            addingPeerLink = false;
-            return;
-          }
+      borderWidth: 2,
+      // color: {
+      //   background: '#38bdf8'
+      // },
 
-          // TODO: Prevent adding duplicate edge
+      ctxRenderer: function ({ ctx, id, x, y, state: { selected, hover }, style, label }) {
+        ctx.save();
 
-          if (newLinkType === 'customer-provider') {
-            // customer-provider logic
-            data.arrows = {
-              to: {
-                enabled: true,
-                scaleFactor: 0.8
-              }
-            };
-            cpLinks = [...cpLinks, [data.from, data.to]];
-          } else if (newLinkType === 'peer') {
-            // peer-to-peer edge logic
-            data.dashes = true;
-            // data.width = 2;
-            data.arrows = 'to, from';
-            peerLinks = [...peerLinks, [data.from, data.to]];
-          }
-          newLinkType = null;
+        // console.log(`Rendering ${label}`);
 
-          // Callback
-          callback(data);
-
-          // Adjust height of graph
-          const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-          // console.log('levels', levels);
-          nodes.forEach((node) => {
-            nodes.update({ ...node, level: levels[node.id] || 1 });
+        // Define the data for the Local RIB
+        const header = ['Local RIB'];
+        let rows = [];
+        if (simulationResults && simulationResults.local_ribs[label]) {
+          rows = simulationResults.local_ribs[label].map(({ type, mask, as_path }) => {
+            return [mask, as_path.join(', '), type === 'attacker' ? '😈' : '😇'];
           });
-          // And disable edit mode
+        }
+
+        // Font for the Local RIB
+        const fontSize = 14;
+        ctx.font = `${fontSize}px Inter`;
+
+        // Find the max width for each column
+        let maxWidths = [0, 0, 0];
+        for (let i = 0; i < rows.length; i++) {
+          let width = ctx.measureText(rows[i][0]).width + 5;
+          maxWidths[0] = Math.max(maxWidths[0], width);
+
+          width = ctx.measureText(rows[i][1]).width + 5;
+          maxWidths[1] = Math.max(maxWidths[1], width);
+
+          width = ctx.measureText(rows[i][2]).width + 5;
+          maxWidths[2] = Math.max(maxWidths[2], width);
+        }
+
+        // Get AS policy
+        let nodePolicy = 'BGP';
+        if (id in policyMap) {
+          nodePolicy = policyMap[id].toLowerCase();
+
+          // TODO: Refactor
+          // Format policy
+          if (
+            nodePolicy === 'bgp' ||
+            nodePolicy === 'rov' ||
+            nodePolicy === 'aspa' ||
+            nodePolicy === 'otc'
+          ) {
+            nodePolicy = nodePolicy.toUpperCase();
+          } else if (nodePolicy === 'pathend') {
+            nodePolicy = 'Pathend';
+          } else if (nodePolicy === 'bgpsec') {
+            nodePolicy = 'BGPSec';
+          }
+        }
+
+        // const cellWidth = maxTextWidth + 0; // Width of each cell
+        const cellHeight = fontSize + 10; // Height of each cell
+        const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0); // Total table width cellWidth * 3
+        const tableHeight = cellHeight * (rows.length + 1); // Total table height
+        const minR = nodePolicy === 'Pathend' || nodePolicy === 'BGPSec' ? 35 : 30;
+        const r = Math.max(minR, tableWidth / 1.6); // Radius of the circle
+
+        // Clear previous path
+        ctx.beginPath();
+
+        if (nodePolicy === 'BGP') {
+          // Draw a circle
+          ctx.arc(x, y, r, 0, 2 * Math.PI, false);
+        } else {
+          // Draw an octagon
+          const angle = (2 * Math.PI) / 8; // Octagon angle
+          ctx.moveTo(x + r * Math.cos(0), y + r * Math.sin(0));
+          for (let i = 1; i < 8; i++) {
+            ctx.lineTo(x + r * Math.cos(angle * i), y + r * Math.sin(angle * i));
+          }
+          ctx.closePath();
+        }
+
+        // Style for shape
+        ctx.fillStyle = style.color;
+        ctx.fill();
+        ctx.strokeStyle = '#003366'; // Dark blue border
+        ctx.lineWidth = selected || hover ? 4 : 2;
+        ctx.stroke();
+
+        // Draw the node value inside the circle at the top
+        ctx.fillStyle = 'black';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (
+          simulationResults &&
+          simulationResults.local_ribs[label] &&
+          simulationResults.local_ribs[label].length > 0
+        ) {
+          ctx.fillText(label, x, y - tableHeight / 1.5);
+          ctx.fillText(nodePolicy, x, y - tableHeight / 2.75);
+        } else {
+          ctx.fillText(label, x, y - tableHeight / 2);
+          ctx.fillText(nodePolicy, x, y + tableHeight / 2);
+        }
+
+        // Draw the table
+        const startX = x - tableWidth / 2;
+        const startY = y - tableHeight / 2;
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1;
+
+        // Draw header
+        ctx.fillStyle = 'black';
+
+        // Draw rows
+        for (let i = 0; i < rows.length; i++) {
+          let prevWidth = startX;
+          for (let j = 0; j < rows[i].length; j++) {
+            const cell = rows[i][j];
+            // const width = cellWidth;
+            // const width = ctx.measureText(cell).width + 5;
+            const width = maxWidths[j];
+            // const cellX = startX + j * width;
+            const cellX = prevWidth;
+            const cellY = startY + (i + 1) * cellHeight;
+            // ctx.fillStyle = 'white';
+            // ctx.fillRect(cellX, cellY, width, cellHeight);
+            ctx.strokeRect(cellX, cellY, width, cellHeight);
+            ctx.fillStyle = 'black';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(cell, cellX + width / 2, cellY + cellHeight / 2);
+            prevWidth += width;
+          }
+        }
+
+        ctx.restore();
+        return {
+          drawNode: null,
+          nodeDimensions: { width: r * 2, height: r * 2 }
+        };
+      }
+    },
+    layout: {
+      hierarchical: {
+        enabled: true,
+        levelSeparation: 200,
+        nodeSpacing: 200,
+        sortMethod: 'directed'
+      }
+    },
+    edges: {
+      width: 2
+    },
+    manipulation: {
+      enabled: false,
+      addEdge: (data, callback) => {
+        // Prevent adding edge to same node
+        if (data.to === data.from) {
+          newLinkType = null;
           network.disableEditMode();
-          // Re-enable hover
-          // network.setOptions({ ...options, interaction: { hover: true } });
           addingEdge = false;
           addingCPLink = false;
           addingPeerLink = false;
+          return;
         }
-      },
-      interaction: { hover: true, zoomSpeed: 0.7, zoomView: false },
-      physics: false
-    };
 
+        // TODO: Prevent adding duplicate edge
+
+        if (newLinkType === 'customer-provider') {
+          // customer-provider logic
+          data.arrows = {
+            to: {
+              enabled: true,
+              scaleFactor: 0.8
+            }
+          };
+          cpLinks = [...cpLinks, [data.from, data.to]];
+        } else if (newLinkType === 'peer') {
+          // peer-to-peer edge logic
+          data.dashes = true;
+          // data.width = 2;
+          data.arrows = 'to, from';
+          peerLinks = [...peerLinks, [data.from, data.to]];
+        }
+        newLinkType = null;
+
+        // Callback
+        callback(data);
+
+        // Adjust height of graph
+        const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
+        // console.log('levels', levels);
+        nodes.forEach((node) => {
+          nodes.update({ ...node, level: levels[node.id] || 1 });
+        });
+        // And disable edit mode
+        network.disableEditMode();
+        // Re-enable hover
+        // network.setOptions({ ...options, interaction: { hover: true } });
+        addingEdge = false;
+        addingCPLink = false;
+        addingPeerLink = false;
+      }
+    },
+    interaction: { hover: true, zoomSpeed: 0.7, zoomView: false },
+    physics: false
+  };
+
+  onMount(() => {
     // Initialize network
     network = new Network(container, { nodes, edges }, options);
     network.disableEditMode();
@@ -689,19 +677,6 @@
 
     addingPeerLink = !addingPeerLink;
     addingCPLink = false;
-  }
-
-  function addEdge2() {
-    if (edgeType === 'peer') {
-      callbackData.dashes = true;
-      callbackData.width = 2;
-      callbackData.arrows = 'to, from';
-    }
-
-    showConfirmAddEdgeModal = false;
-    // callbackFunc = null;
-    // callbackData = null;
-    callbackFunc(callbackData);
   }
 
   function deleteNode() {
@@ -1482,7 +1457,7 @@
         size="sm"
         on:click={() =>
           network.moveTo({
-            scale: network.getScale() * 1.5,
+            scale: network.getScale() * 1.25,
             animation: { duration: 200, easingFunction: 'linear' }
           })}>
         <ZoomIn class="size-5" />
@@ -1500,7 +1475,7 @@
         size="sm"
         on:click={() =>
           network.moveTo({
-            scale: network.getScale() / 1.5,
+            scale: network.getScale() / 1.25,
             animation: { duration: 200, easingFunction: 'linear' }
           })}>
         <ZoomOut class="size-5" />
@@ -1793,36 +1768,6 @@
     </Card.Footer>
   </Card.Root>
 {/if}
-
-<!-- {#if nodeData}
-  <div class="tooltip" style="left: {nodeData.x}px; top: {nodeData.y}px;">
-    <p class="mb-2">{nodeData.policy.toUpperCase()}</p>
-    {#if simulationResults !== null && simulationResults.local_ribs[nodeData.id]}
-      {#if simulationResults.local_ribs[nodeData.id].length > 0}
-        <table border="0" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">
-          <tr>
-            <td colspan="4">Local RIB</td>
-          </tr>
-          {#each simulationResults.local_ribs[nodeData.id] as { type, mask, as_path }}
-            <tr>
-              <td>{mask}</td>
-              <td>{as_path.join(', ')}</td>
-              <td>
-                {#if type === 'victim'}
-                  &#128519;
-                {:else if type === 'attacker'}
-                  &#128520;
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </table>
-      {:else}
-        <p>Disconnected</p>
-      {/if}
-    {/if}
-  </div>
-{/if} -->
 
 {#if contextMenuData.show}
   <div

@@ -2,10 +2,9 @@
   import { DataSet } from 'vis-network/standalone/esm/vis-network';
   import ConfigForm from '$lib/components/config-form.svelte';
   import Graph from '../lib/components/graph.svelte';
-  import { type Config, exampleConfigsMap, exampleConfigsMap2 } from '$lib';
+  import { type Config, exampleConfigsMap } from '$lib';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
   import CitationModal from '$lib/components/citation-modal.svelte';
-  import ErrorBanner from '$lib/components/error-banner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import ChevronDown from 'lucide-svelte/icons/chevron-down';
@@ -15,11 +14,11 @@
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Accordion from '$lib/components/ui/accordion';
-  import { cn, getROAStates2 } from '$lib/utils';
+  import { cn, fetchROAStates } from '$lib/utils';
   import Bug from 'lucide-svelte/icons/bug';
   import { toast } from 'svelte-sonner';
 
-  // State
+  // Data
   let nodes = new DataSet([]);
   let edges = new DataSet([]);
   let config: Config = {
@@ -28,16 +27,14 @@
     scenario: null,
     announcements: [],
     roas: []
-    // propagation_rounds: 1
   };
   let policyMap: Record<number, string> = {};
   let roleMap: Record<number, string> = {};
 
+  // State
   let imageURL = '';
   let prevConfig: Config | null = null;
   let fileInput: HTMLInputElement; // Reference to the hidden file input
-  let submitPressed;
-  let isImageOpen = false;
   let isDropdownOpen = false;
   let simulationResults: {} | null = null;
   let cpLinks: number[][] = [];
@@ -46,18 +43,19 @@
   let showBanner = false;
   let errorMessage = '';
   let isLoading: boolean = false;
-  let showAddASModal = false;
   let showClearGraphModal = false;
   let graphComponent: Graph;
   let annROAStates: string[];
   let graphLoadingState = '';
 
+  // Load subprefix hijack with custom anns by default
   onMount(async () => {
-    if (!exampleConfigsMap2[$page.url.hash]) {
+    if (!exampleConfigsMap[$page.url.hash]) {
       loadExampleConfig(exampleConfigs['Subprefix Hijack with Custom Announcements']);
     }
   });
 
+  // Load config from URL
   $: if ($page.url.searchParams.has('link')) {
     const link = $page.url.searchParams.get('link');
     if (link) {
@@ -66,9 +64,8 @@
   }
 
   // Handle jump link
-  $: if (exampleConfigsMap2[$page.url.hash]) {
-    // console.log($page.url.hash);
-    loadExampleConfig(exampleConfigs[exampleConfigsMap2[$page.url.hash]]);
+  $: if (exampleConfigsMap[$page.url.hash]) {
+    loadExampleConfig(exampleConfigs[exampleConfigsMap[$page.url.hash]]);
   }
 
   async function fetchConfig(url: string) {
@@ -114,27 +111,31 @@
       config = JSON.parse(e.target.result);
       generateGraph(config);
 
-      // Emit message to graph
+      // Send message to graph
       graphLoadingState = 'file';
     };
     reader.readAsText(file);
 
     // Reset fileInput so that we can load same file if needed
     fileInput.value = '';
-
     // Reset simulation results
     simulationResults = null;
   }
 
   async function loadExampleConfig(example: Config) {
+    // Clone example so that same example can be reloaded
     config = structuredClone(example);
+
+    // Load graph from config
     generateGraph(config);
+
+    // Reset sim results
     simulationResults = null;
     isDropdownOpen = false;
     graphLoadingState = 'example';
 
     // Update ROA validity
-    annROAStates = await getROAStates2(config.announcements, config.roas);
+    annROAStates = await fetchROAStates(config.announcements, config.roas);
   }
 
   function generateGraph(data: Config) {
@@ -159,7 +160,6 @@
     }
 
     if (data.graph === undefined) {
-      // network.setData;
       return;
     }
 
@@ -167,12 +167,12 @@
       data.scenario = null;
     }
 
-    let levels: {};
-    // console.log(data.graph.propagation_ranks);
+    let levels: Record<number, number>;
+
     if (data.graph?.propagation_ranks) {
-      // Reverse and turn it into a map
+      // Reverse prop ranks and turn it into a map
       levels = listToIndexJsonReversed(data.graph.propagation_ranks);
-      console.log('listToIndexJSON', levels);
+      // console.log('listToIndexJSON', levels);
     } else {
       levels = getPropagationRanks(data.graph);
     }
@@ -188,8 +188,6 @@
     }
     console.log(roleMap);
 
-    // console.log(policyMap);
-
     // Update links after loading from file
     cpLinks = [];
     data.graph.cp_links.forEach((arr) => {
@@ -201,36 +199,22 @@
     });
     // console.log('load from file', cpLinks, peerLinks);
 
-    // Generate nodes
+    // Get all nodes
     const allAsns = new Set([
       ...data.attacker_asns,
       ...data.victim_asns,
       ...data.graph.peer_links.flat(),
       ...data.graph.cp_links.flat()
     ]);
+
     allAsns.forEach((asn) => {
       let node = {
         id: asn,
         label: String(asn),
         level: levels[asn] || 1 // Default level to 1 if not calculated,
-        // policy: asn in policyMap && policyMap[asn] // If it exists
-        // color: data.attacker_asns.includes(asn)
-        //   ? 'red'
-        //   : data.victim_asns.includes(asn)
-        //     ? 'green'
-        //     : 'blue'
       };
       if (asn in policyMap) {
         node.policy = policyMap[asn].toLowerCase();
-        //   if (
-        //     node.policy === 'rov' ||
-        //     node.policy === 'aspa' ||
-        //     node.policy === 'bgpsec' ||
-        //     node.policy === 'otc' ||
-        //     node.policy === 'pathend'
-        //   ) {
-        //     node.shape = 'hexagon';
-        //   }
       }
       if (data.victim_asns?.includes(asn)) {
         node.role = 'victim';
@@ -244,7 +228,7 @@
       nodes.add(node);
     });
 
-    // Generate peer and cp_links as edges
+    // Convert peer and cp links to vis-network edges
     data.graph.peer_links.forEach((link) => {
       edges.add({
         from: link[0],
@@ -269,7 +253,8 @@
   }
 
   function addGraphToConfig() {
-    // Generate graph, victim ASNs, attacker ASNs, and ASN policy map for the config from the nodes and edges data sets
+    // Generate graph, victim ASNs, attacker ASNs, and ASN policy map for the config from the nodes
+    // and edges data sets
 
     const attackerASNs = [];
     const victimASNs = [];
@@ -283,14 +268,7 @@
         victimASNs.push(node.id);
       }
 
-      if (
-        // node.policy === 'bgp' ||
-        node.policy == 'rov' ||
-        node.policy == 'aspa' ||
-        node.policy == 'bgpsec' ||
-        node.policy == 'pathend' ||
-        node.policy == 'otc'
-      ) {
+      if (node.policy !== 'bgp') {
         asnPolicyMap[node.id] = node.policy;
       }
     });
@@ -460,6 +438,7 @@
     toast.error(errorMessage);
   }
 
+  // TODO: Add types
   // Drag functionality
   let firstColumn, mainColumn;
   let startX, startWidth, containerWidth;
@@ -556,13 +535,9 @@
           </Button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Content>
-          {#each Object.keys(exampleConfigs) as configName}
-            <DropdownMenu.Item
-              href={'#' + exampleConfigsMap[configName]}
-              on:click={() => {
-                // loadExampleConfig(exampleConfigs[configName])
-              }}>
-              {configName}
+          {#each Object.keys(exampleConfigsMap) as configName}
+            <DropdownMenu.Item href={configName}>
+              {exampleConfigsMap[configName]}
             </DropdownMenu.Item>
           {/each}
         </DropdownMenu.Content>
@@ -616,24 +591,21 @@
     </div>
 
     <!-- <div class="overflow-hidden resize-x min-w-[33vw] max-w-[33vw]"></div> -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div class="resizer order-2 md:visible invisible bg-neutral-100" on:mousedown={startDrag}></div>
 
     <div class="basis-2/3 order-1 md:order-2">
       <Graph
+        bind:this={graphComponent}
         {nodes}
         {edges}
         bind:simulationResults
-        bind:this={graphComponent}
-        bind:showModal={showAddASModal}
-        bind:showClearGraphModal
         bind:cpLinks
         bind:peerLinks
         bind:roleMap
         bind:policyMap
         bind:imageURL
-        bind:graphLoadingState
-        bind:isLoading
-        {handleSubmit} />
+        bind:graphLoadingState />
     </div>
   </div>
 
