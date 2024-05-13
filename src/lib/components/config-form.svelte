@@ -10,14 +10,14 @@
   import { Button } from './ui/button';
   import { Switch } from './ui/switch';
   import { Checkbox } from './ui/checkbox';
-  import { isAnnouncementEmpty } from '../utils';
+  import { checkAnnValidity, isAnnouncementEmpty } from '$lib/utils';
   import * as Tooltip from '$lib/components/ui/tooltip';
   import Pencil from 'lucide-svelte/icons/pencil';
   import Trash2 from 'lucide-svelte/icons/trash-2';
   import Plus from 'lucide-svelte/icons/plus';
   import MoreHorizontal from 'lucide-svelte/icons/more-horizontal';
   import { toast } from 'svelte-sonner';
-  import { parseCIDR } from 'ipaddr.js';
+  import { parseCIDR, isValid, parse, IPv4 } from 'ipaddr.js';
   import { HelpCircle } from 'lucide-svelte';
 
   export let config: Config;
@@ -58,10 +58,6 @@
       config.announcements = [];
     }
 
-    // if (isAnnouncementEmpty(newAnnouncement)) {
-    //   return;
-    // }
-
     // Prefix must be specified
     if (newAnnouncement.prefix === '') {
       toast.error('Prefix is not specified');
@@ -69,6 +65,19 @@
     }
 
     // Check if prefix is a valid IP address
+    const prefixParts = newAnnouncement.prefix.split('/');
+    if (
+      !(
+        prefixParts.length === 2 &&
+        prefixParts[0].split('.').length === 4 &&
+        isValid(prefixParts[0])
+      )
+    ) {
+      toast.error(`${newAnnouncement.prefix} is not a valid IP address`);
+      return;
+    }
+
+    // Check if prefix is a valid CIDR prefix
     try {
       const _ = parseCIDR(newAnnouncement.prefix);
     } catch {
@@ -80,6 +89,11 @@
     // @ts-ignore
     if (newAnnouncement.seed_asn === '') {
       toast.error('Announced by ASN is not specified');
+      return;
+    }
+
+    if (newAnnouncement.seed_asn < 0) {
+      toast.error('Announced by ASN cannot be negative');
       return;
     }
 
@@ -130,19 +144,59 @@
 
     // ROA must be filled in
     // @ts-ignore
-    if (newROA.prefix === '' || newROA.origin === '') {
+    if (newROA.prefix === '') {
+      toast.error('Prefix must be specified');
+      return;
+    }
+
+    // Check if prefix is a valid IP address
+    const prefixParts = newROA.prefix.split('/');
+    if (
+      !(
+        prefixParts.length === 2 &&
+        prefixParts[0].split('.').length === 4 &&
+        isValid(prefixParts[0])
+      )
+    ) {
+      toast.error(`${newROA.prefix} is not a valid IP address`);
+      return;
+    }
+
+    // Check if prefix is a valid IP address
+    try {
+      const _ = parseCIDR(newROA.prefix);
+    } catch {
+      toast.error(`${newROA.prefix} is not a valid CIDR prefix`);
+      return;
+    }
+
+    // @ts-ignore
+    if (newROA.origin === '') {
+      toast.error('Origin ASN must be specified');
       return;
     }
 
     // Not sure why I have to do this, TODO: debug
     newROA.origin = Number(newROA.origin);
 
+    if (newROA.origin < 0) {
+      toast.error('Origin ASN cannot be negative');
+      return;
+    }
+
+    // Check if max length is defined if calculate box is unchcked
+    // @ts-ignore
+    if (!newROACalculateLength && (newROA.max_length === undefined || newROA.max_length === '')) {
+      toast.error('Max length must be specified if it is not to be calculated');
+      return;
+    }
+
     if (newROACalculateLength) {
       newROA.max_length = null;
     } else {
       newROA.max_length = Number(newROA.max_length);
     }
-    console.log(newROA.max_length);
+    // console.log(newROA.max_length);
 
     config.roas = [...(config.roas ?? []), newROA];
     newROA = {
@@ -165,6 +219,52 @@
   }
 
   async function saveAnnouncement() {
+    // TODO: Put validation code in separate function
+    // Prefix must be specified
+    if (selectedAnnouncement.prefix === '') {
+      toast.error('Prefix is not specified');
+      return;
+    }
+
+    // Check if prefix is a valid IP address
+    const prefixParts = selectedAnnouncement.prefix.split('/');
+    if (
+      !(
+        prefixParts.length === 2 &&
+        prefixParts[0].split('.').length === 4 &&
+        isValid(prefixParts[0])
+      )
+    ) {
+      toast.error(`${selectedAnnouncement.prefix} is not a valid IP address`);
+      return;
+    }
+
+    // Check if prefix is a valid CIDR prefix
+    try {
+      const _ = parseCIDR(selectedAnnouncement.prefix);
+    } catch {
+      toast.error(`${selectedAnnouncement.prefix} is not a valid CIDR prefix`);
+      return;
+    }
+
+    // Seed ASN must be populated
+    // @ts-ignore
+    if (selectedAnnouncement.seed_asn === '') {
+      toast.error('Announced by ASN is not specified');
+      return;
+    }
+
+    if (selectedAnnouncement.seed_asn < 0) {
+      toast.error('Announced by ASN cannot be negative');
+      return;
+    }
+
+    // AS path must be populated
+    if (selectedAnnouncement.as_path.length === 0) {
+      toast.error('AS Path cannot be empty');
+      return;
+    }
+
     config.announcements[selectedIndex] = selectedAnnouncement;
     // config.announcements = config.announcements;
 
@@ -179,21 +279,79 @@
     // TODO: debug
     selectedROA.origin = Number(selectedROA.origin);
 
+    // if (
+    //   selectedROACalculateLength ||
+    //   // @ts-ignore
+    //   selectedROA.max_length === '' ||
+    //   selectedROA.max_length === undefined ||
+    //   selectedROA.max_length === null
+    // ) {
+    //   selectedROA.max_length = null;
+    // } else {
+    //   selectedROA.max_length = Number(selectedROA.max_length);
+    // }
+    // console.log(selectedROA.max_length);
+    // if (config.roas === undefined) {
+    //   console.log('roas array is empty');
+    //   return;
+    // }
+
+    // ROA must be filled in
+    // @ts-ignore
+    if (selectedROA.prefix === '') {
+      toast.error('Prefix must be specified');
+      return;
+    }
+
+    // Check if prefix is a valid IP address
+    const prefixParts = selectedROA.prefix.split('/');
     if (
-      selectedROACalculateLength ||
-      // @ts-ignore
-      selectedROA.max_length === '' ||
-      selectedROA.max_length === undefined ||
-      selectedROA.max_length === null
+      !(
+        prefixParts.length === 2 &&
+        prefixParts[0].split('.').length === 4 &&
+        isValid(prefixParts[0])
+      )
     ) {
+      toast.error(`${selectedROA.prefix} is not a valid IP address`);
+      return;
+    }
+
+    // Check if prefix is a valid IP address
+    try {
+      const _ = parseCIDR(selectedROA.prefix);
+    } catch {
+      toast.error(`${selectedROA.prefix} is not a valid CIDR prefix`);
+      return;
+    }
+
+    // @ts-ignore
+    if (selectedROA.origin === '') {
+      toast.error('Origin ASN must be specified');
+      return;
+    }
+
+    // Not sure why I have to do this, TODO: debug
+    selectedROA.origin = Number(selectedROA.origin);
+
+    if (selectedROA.origin < 0) {
+      toast.error('Origin ASN cannot be negative');
+      return;
+    }
+
+    // Check if max length is defined if calculate box is unchcked
+    // @ts-ignore
+    if (
+      !selectedROACalculateLength &&
+      (selectedROA.max_length === undefined || selectedROA.max_length === '')
+    ) {
+      toast.error('Max length must be specified if it is not to be calculated');
+      return;
+    }
+
+    if (selectedROACalculateLength) {
       selectedROA.max_length = null;
     } else {
       selectedROA.max_length = Number(selectedROA.max_length);
-    }
-    console.log(selectedROA.max_length);
-    if (config.roas === undefined) {
-      console.log('roas array is empty');
-      return;
     }
 
     config.roas[selectedIndex] = selectedROA;
@@ -208,7 +366,7 @@
     // return Promise.all(config.announcements.forEach((ann) => checkAnnValidity));
     let states = [];
     for (let ann of config.announcements) {
-      const state = await checkAnnValidity(ann);
+      const state = await checkAnnValidity(ann, config);
       states.push(state);
     }
     // console.log(states);
@@ -232,32 +390,32 @@
     return Number(parts[parts.length - 1]);
   }
 
-  async function checkAnnValidity(ann: Announcement): Promise<string> {
-    if (config.roas === undefined) {
-      return 'Unknown';
-    }
+  // async function checkAnnValidity(ann: Announcement): Promise<string> {
+  //   if (config.roas === undefined) {
+  //     return 'Unknown';
+  //   }
 
-    const validation: AnnouncementValidition = {
-      prefix: ann.prefix,
-      origin: ann.seed_asn,
-      roas: config.roas
-    };
-    try {
-      const response = await fetch('/api/validate-roa', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(validation)
-      });
-      if (!response.ok) {
-        return 'Unknown';
-      }
-      return await response.json();
-    } catch (error) {
-      return 'Unknown';
-    }
-  }
+  //   const validation: AnnouncementValidition = {
+  //     prefix: ann.prefix,
+  //     origin: ann.as_path.at(-1) ?? ann.seed_asn,
+  //     roas: config.roas
+  //   };
+  //   try {
+  //     const response = await fetch('/api/validate-roa', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json'
+  //       },
+  //       body: JSON.stringify(validation)
+  //     });
+  //     if (!response.ok) {
+  //       return 'Unknown';
+  //     }
+  //     return await response.json();
+  //   } catch (error) {
+  //     return 'Unknown';
+  //   }
+  // }
 </script>
 
 <!-- Add Announcement Modal -->

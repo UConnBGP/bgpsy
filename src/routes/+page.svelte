@@ -89,7 +89,7 @@
     simulationResults = null;
   }
 
-  function loadConfig(event: Event) {
+  async function loadConfig(event: Event) {
     // Stupid type safety check for TypeScript
     if (
       !(event.target instanceof HTMLInputElement) ||
@@ -102,7 +102,7 @@
     // Read file as JSON and store it in config
     const file = event.target.files[0];
     const reader = new FileReader();
-    reader.onload = (e: ProgressEvent<FileReader>) => {
+    reader.onload = async (e: ProgressEvent<FileReader>) => {
       // Another type check
       if (e.target === null || typeof e.target.result !== 'string') {
         return;
@@ -113,6 +113,11 @@
 
       // Send message to graph
       graphLoadingState = 'file';
+
+      // Update ROA validity
+      console.log(config.announcements, config.roas);
+      annROAStates = await fetchROAStates(config.announcements, config.roas);
+      console.log('fetching roa validity');
     };
     reader.readAsText(file);
 
@@ -504,7 +509,7 @@
         </svg>
       </a>
       <a
-        href="https://github.com/Arvonit/bgpsy/issues"
+        href="https://github.com/jfuruness/bgpy_pkg/issues"
         target="_blank"
         class="p-2 rounded-full hover:bg-gray-200">
         <Bug class="size-6" />

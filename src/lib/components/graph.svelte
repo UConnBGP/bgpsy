@@ -147,12 +147,18 @@
           }
         }
 
-        // const cellWidth = maxTextWidth + 0; // Width of each cell
-        const cellHeight = fontSize + 10; // Height of each cell
-        const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0); // Total table width cellWidth * 3
-        const tableHeight = cellHeight * (rows.length + 1); // Total table height
+        // Width of each cell
+        // const cellWidth = maxTextWidth + 0;
+        // Height of each cell
+        const cellHeight = fontSize + 10;
+        // Total table width cellWidth * 3
+        const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0);
+        // Total table height
+        const tableHeight = cellHeight * (rows.length + 1);
+        // Make radius a bit bigger for longer policy names
         const minR = nodePolicy === 'Pathend' || nodePolicy === 'BGPSec' ? 35 : 30;
-        const r = Math.max(minR, tableWidth / 1.6); // Radius of the circle
+        // Radius of the circle
+        const r = Math.max(minR, tableWidth / 1.6);
 
         // Clear previous path
         ctx.beginPath();
@@ -168,6 +174,13 @@
             ctx.lineTo(x + r * Math.cos(angle * i), y + r * Math.sin(angle * i));
           }
           ctx.closePath();
+
+          // Draw a square
+          // Side length of the square
+          // const sideLength = r * 1.8;
+
+          // ctx.rect(x - sideLength / 2, y - sideLength / 2, sideLength, sideLength);
+          // ctx.closePath();
         }
 
         // Style for shape
@@ -433,6 +446,8 @@
   $: if (simulationResults && network) {
     showLegend = true;
     network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
+    selectedASN = null;
+    selectedLinkID = null;
   }
 
   $: if ((graphLoadingState === 'file' || graphLoadingState === 'example') && network) {
@@ -1525,7 +1540,7 @@
                 <td>(For most specific prefix only)</td>
               </tr>
               <tr>
-                <td class="bg-gradient-to-r from-red-500 to-white border border-black">
+                <td class="bg-gradient-to-r from-orange-500 to-white border border-black">
                   &#128520; ATTACKER SUCCESS &#128520;
                 </td>
                 <td class="px-4 border border-black"

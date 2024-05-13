@@ -3,6 +3,7 @@
   import { Toaster } from '$lib/components/ui/sonner';
 </script>
 
-<Toaster />
+<!-- Double duration for longer error messages -->
+<Toaster duration={8000} />
 
 <slot />

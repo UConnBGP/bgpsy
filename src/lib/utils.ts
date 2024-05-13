@@ -2,7 +2,34 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { cubicOut } from 'svelte/easing';
 import type { TransitionConfig } from 'svelte/transition';
-import type { Announcement, AnnouncementValidition, Graph, ROA } from './types';
+import type { Announcement, AnnouncementValidition, Config, Graph, ROA } from './types';
+
+export async function checkAnnValidity(ann: Announcement, config: Config): Promise<string> {
+  if (config.roas === undefined) {
+    return 'Unknown';
+  }
+
+  const validation: AnnouncementValidition = {
+    prefix: ann.prefix,
+    origin: ann.as_path.at(-1) ?? ann.seed_asn,
+    roas: config.roas
+  };
+  try {
+    const response = await fetch('/api/validate-roa', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(validation)
+    });
+    if (!response.ok) {
+      return 'Unknown';
+    }
+    return await response.json();
+  } catch (error) {
+    return 'Unknown';
+  }
+}
 
 export function isAnnouncementEmpty(ann: Announcement): boolean {
   return (
@@ -114,7 +141,7 @@ export async function fetchROAStates(
 export async function checkAnnValidity2(ann: Announcement, roas: ROA[]): Promise<string> {
   const validation: AnnouncementValidition = {
     prefix: ann.prefix,
-    origin: ann.seed_asn,
+    origin: ann.as_path.at(-1) ?? ann.seed_asn,
     roas: roas
   };
   try {
