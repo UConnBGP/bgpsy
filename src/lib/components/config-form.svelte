@@ -766,7 +766,7 @@
                       <DropdownMenu.Label>Actions</DropdownMenu.Label>
                       <DropdownMenu.Item
                         on:click={() => {
-                          selectedAnnouncement = announcement;
+                          selectedAnnouncement = structuredClone(announcement);
                           selectedIndex = index;
                           showEditAnnouncementModal = true;
                         }}>
@@ -865,7 +865,7 @@
                       <DropdownMenu.Label>Actions</DropdownMenu.Label>
                       <DropdownMenu.Item
                         on:click={() => {
-                          selectedROA = roa;
+                          selectedROA = structuredClone(roa);
                           selectedIndex = index;
                           selectedROACalculateLength =
                             selectedROA.max_length === null || selectedROA.max_length === undefined;
