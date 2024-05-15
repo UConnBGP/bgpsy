@@ -81,6 +81,7 @@
     peers: Array<number | null>()
   };
   let addASErrorMsg = '';
+  let maxNodeRadius = 50;
   let options: Options = {
     // Configuration for vis-network
     // configure: true,
@@ -91,14 +92,8 @@
         size: 20
       },
       borderWidth: 2,
-      // color: {
-      //   background: '#38bdf8'
-      // },
-
       ctxRenderer: function ({ ctx, id, x, y, state: { selected, hover }, style, label }) {
         ctx.save();
-
-        // console.log(`Rendering ${label}`);
 
         // Define the data for the Local RIB
         const header = ['Local RIB'];
@@ -156,9 +151,40 @@
         // Total table height
         const tableHeight = cellHeight * (rows.length + 1);
         // Make radius a bit bigger for longer policy names
-        const minR = nodePolicy === 'Pathend' || nodePolicy === 'BGPSec' ? 35 : 30;
+        // const minR = nodePolicy === 'Pathend' || nodePolicy === 'BGPSec' ? 35 : 30;
         // Radius of the circle
-        const r = Math.max(minR, tableWidth / 1.6);
+        // const r = Math.max(minR, tableWidth / 1.6);
+
+        // Adjust radius based on policy name length if simulation results are empty
+        let r;
+        if (
+          simulationResults &&
+          simulationResults.local_ribs[label] &&
+          simulationResults.local_ribs[label].length > 0
+        ) {
+          r = Math.max(60, tableWidth / 1.5);
+        } else {
+          const policyTextWidth = ctx.measureText(nodePolicy).width;
+          console.log(policyTextWidth / 1.25);
+          r = Math.max(35, policyTextWidth / 1.25);
+        }
+
+        // if (r > maxNodeRadius) {
+        //   maxNodeRadius = r;
+        //   // console.log('maxRadius:', maxNodeRadius);
+        //   // network.setOptions({
+        //   //   ...options,
+        //   //   layout: {
+        //   //     hierarchical: {
+        //   //       enabled: true,
+        //   //       levelSeparation: maxNodeRadius * 2.5,
+        //   //       nodeSpacing: maxNodeRadius * 2.5,
+        //   //       sortMethod: 'directed'
+        //   //     }
+        //   //   }
+        //   // });
+        //   // network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
+        // }
 
         // Clear previous path
         ctx.beginPath();
@@ -168,26 +194,34 @@
           ctx.arc(x, y, r, 0, 2 * Math.PI, false);
         } else {
           // Draw an octagon
-          const angle = (2 * Math.PI) / 8; // Octagon angle
-          ctx.moveTo(x + r * Math.cos(0), y + r * Math.sin(0));
-          for (let i = 1; i < 8; i++) {
-            ctx.lineTo(x + r * Math.cos(angle * i), y + r * Math.sin(angle * i));
+          // const angle = (2 * Math.PI) / 8; // Octagon angle
+          // ctx.moveTo(x + r * Math.cos(0), y + r * Math.sin(0));
+          // for (let i = 1; i < 8; i++) {
+          //   ctx.lineTo(x + r * Math.cos(angle * i), y + r * Math.sin(angle * i));
+          // }
+          // ctx.closePath();
+
+          // Draw an octagon
+          const angleOffset = Math.PI / 8; // 22.5 degrees for octagon
+
+          for (let i = 0; i < 8; i++) {
+            const angle = (Math.PI / 4) * i - angleOffset;
+            const x_i = x + r * Math.cos(angle);
+            const y_i = y + r * Math.sin(angle);
+            if (i === 0) {
+              ctx.moveTo(x_i, y_i);
+            } else {
+              ctx.lineTo(x_i, y_i);
+            }
           }
           ctx.closePath();
-
-          // Draw a square
-          // Side length of the square
-          // const sideLength = r * 1.8;
-
-          // ctx.rect(x - sideLength / 2, y - sideLength / 2, sideLength, sideLength);
-          // ctx.closePath();
         }
 
         // Style for shape
         ctx.fillStyle = style.color;
         ctx.fill();
-        ctx.strokeStyle = '#003366'; // Dark blue border
-        ctx.lineWidth = selected || hover ? 4 : 2;
+        ctx.strokeStyle = style.borderColor;
+        ctx.lineWidth = selected || hover ? 3 : 2;
         ctx.stroke();
 
         // Draw the node value inside the circle at the top
@@ -195,16 +229,24 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
+        // Calculate the total height for centering
         if (
           simulationResults &&
           simulationResults.local_ribs[label] &&
           simulationResults.local_ribs[label].length > 0
         ) {
-          ctx.fillText(label, x, y - tableHeight / 1.5);
-          ctx.fillText(nodePolicy, x, y - tableHeight / 2.75);
+          const totalHeight = tableHeight + 2 * fontSize + 20;
+          const centerY = y - totalHeight / 2;
+
+          // Draw label and policy
+          ctx.fillText(label, x, centerY + fontSize);
+          ctx.fillText(nodePolicy, x, centerY + 2.5 * fontSize);
         } else {
-          ctx.fillText(label, x, y - tableHeight / 2);
-          ctx.fillText(nodePolicy, x, y + tableHeight / 2);
+          const totalHeight = 2 * fontSize + 20;
+          const centerY = y - totalHeight / 2;
+
+          ctx.fillText(label, x, centerY + fontSize);
+          ctx.fillText(nodePolicy, x, centerY + 2.5 * fontSize);
         }
 
         // Draw the table
@@ -445,7 +487,7 @@
 
   $: if (simulationResults && network) {
     showLegend = true;
-    network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
+    // network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
     selectedASN = null;
     selectedLinkID = null;
   }
@@ -925,30 +967,48 @@
         return (!array.includes(node.id) || array[index] === node.id) && node.id !== asnToIgnore;
       })
       .sort((a: Node, b: Node) => Number(a.id) - Number(b.id));
-    // console.log(avail);
+    console.log(avail);
     return avail;
   }
 
-  function getRelationships(asn) {
-    let customers = [];
-    let providers = [];
-    let peers = [];
+  function getRelationships(asn: number) {
+    let customers: number[] = [];
+    let providers: number[] = [];
+    let peers: number[] = [];
 
-    edges.forEach((edge) => {
-      if (edge.from === asn) {
-        if (edge.arrows && edge.arrows.to) {
-          customers.push(edge.to);
-        } else if (edge.dashes) {
-          peers.push(edge.to);
-        }
-      } else if (edge.to === asn) {
-        if (edge.arrows && edge.arrows.to) {
-          providers.push(edge.from);
-        } else if (edge.dashes) {
-          peers.push(edge.from);
-        }
+    // edges.forEach((edge) => {
+    //   if (edge.from === asn) {
+    //     if (edge.arrows && edge.arrows.to) {
+    //       customers.push(edge.to);
+    //     } else if (edge.dashes) {
+    //       peers.push(edge.to);
+    //     }
+    //   } else if (edge.to === asn) {
+    //     if (edge.arrows && edge.arrows.to) {
+    //       providers.push(edge.from);
+    //     } else if (edge.dashes) {
+    //       peers.push(edge.from);
+    //     }
+    //   }
+    // });
+
+    cpLinks.forEach((edge) => {
+      if (edge[0] === asn) {
+        customers.push(edge[1]);
+      } else if (edge[1] === asn) {
+        providers.push(edge[0]);
       }
     });
+
+    peerLinks.forEach((edge) => {
+      if (edge[0] === asn) {
+        peers.push(edge[1]);
+      } else if (edge[1] === asn) {
+        peers.push(edge[0]);
+      }
+    });
+
+    console.log(providers);
 
     return { customers, providers, peers };
   }
@@ -1029,6 +1089,7 @@
           !(link[0] === selectedASN && link[1] === oldASN)
       );
       peerLinks = [...peerLinks, [selectedASN, newASN]];
+      // peerLinks;
     }
 
     selectedASRelationships = getRelationships(selectedASN);
