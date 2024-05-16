@@ -5,6 +5,7 @@
   import * as Dialog from './ui/dialog';
 
   export let showModal = false;
+
   const citation = `@inproceedings{10.1145/3607505.360750,
 author = {Furuness, Justin and Morris, Cameron and Morillo, Reynaldo and Herzberg, Amir and Wang, Bing},
 title = {BGPy: The BGP Python Security Simulator},
