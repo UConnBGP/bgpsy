@@ -4,20 +4,21 @@
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { availableNodes } from '$lib/extra';
+  import { availableNodes, createNode, updatePropRanks } from '$lib/utils/as';
   import type { DataSet, Edge, Node } from 'vis-network/standalone';
   import { toast } from 'svelte-sonner';
-  import type { Config } from '$lib/types';
-  import { getPropagationRanks } from '$lib/utils';
+  import { attackerColor, victimColor, type Config } from '$lib/types';
 
   export let showModal: boolean;
   export let nodes: DataSet<Node>;
   export let edges: DataSet<Edge>;
   export let config: Config;
+  export let refreshSelectedAS: () => void;
+  export let centerGraph: () => void;
 
   let newASN: number | null = null;
   let newASPolicy = 'bgp';
-  let newASRole = '';
+  let newASRole = 'none';
   let newASProviders = Array<number | null>();
   let newASCustomers = Array<number | null>();
   let newASPeers = Array<number | null>();
@@ -45,28 +46,20 @@
       return;
     }
 
-    const newNode = {
-      id: Number(newASN),
-      label: String(newASN),
-      level: 1
-    };
+    const newNode = createNode(Number(newASN), 1);
 
     if (newASPolicy.toLowerCase() !== 'bgp') {
       config.asn_policy_map[Number(newASN)] = newASPolicy;
     }
 
     if (newASRole === 'victim') {
-      const colorProp = { border: '#047857', background: '#34d399' };
-      // @ts-ignore
-      newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
+      newNode.color = victimColor;
 
-      config.victim_asns.push(newASN);
+      config.victim_asns = [...config.victim_asns, newASN];
     } else if (newASRole === 'attacker') {
-      const colorProp = { border: '#b91c1c', background: '#f87171' };
-      // @ts-ignore
-      newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
+      newNode.color = attackerColor;
 
-      config.attacker_asns.push(newASN);
+      config.attacker_asns = [...config.attacker_asns, newASN];
     }
 
     // Add node
@@ -134,6 +127,7 @@
       config.graph.peer_links = [...config.graph.peer_links, [Number(newASN), Number(peer)]];
     }
 
+    // TODO: Consider adding this
     // Since graph is changed, clear out simulation results
     // simulationResults = null;
     // imageURL = null;
@@ -143,27 +137,26 @@
     //   }
     // }
 
-    // Refresh graph
-    // network.setData({ nodes, edges });
-
     // Adjust height of graph
-    const levels = getPropagationRanks({
-      cp_links: config.graph.cp_links,
-      peer_links: config.graph.peer_links
-    });
-    for (const node of nodes.get()) {
-      nodes.update({ ...node, level: levels[node.id as number] || 1 });
-    }
+    updatePropRanks(nodes, config);
+
+    // If we added an edge to the selected AS, reselect it so that it shows up on the details card
+    refreshSelectedAS();
+
+    // Center graph
+    centerGraph();
 
     // Reset input
     newASN = null;
     newASPolicy = 'bgp';
-    newASRole = '';
+    newASRole = 'none';
     newASCustomers = [];
     newASProviders = [];
     newASPeers = [];
 
     showModal = false; // Close modal
+
+    console.log(config);
   }
 
   // $: newASN, console.log(newASN);
@@ -171,7 +164,8 @@
 
 <!-- Add AS Modal -->
 <Dialog.Root bind:open={showModal}>
-  <Dialog.Content class="max-w-3xl left-[9%] top-[5%] translate-x-[-9%] translate-y-[-5%]">
+  <Dialog.Content
+    class="md:max-w-3xl sm:max-w-[90vw] max-w-[99vw] md:left-[9%] md:top-[5%] md:translate-x-[-9%] md:translate-y-[-5%]">
     <Dialog.Header>
       <Dialog.Title>Add AS</Dialog.Title>
       <Dialog.Description>
@@ -181,8 +175,6 @@
     </Dialog.Header>
     <div>
       <div class="grid gap-4 py-4">
-        <!-- <ErrorBanner message={addASErrorMsg} open={addASErrorMsg !== ''} /> -->
-
         <div class="grid grid-cols-5 items-center gap-4">
           <Label class="text-right">AS Number</Label>
           <Input bind:value={newASN} class="col-span-4" type="number" />
@@ -198,7 +190,7 @@
             <option value="aspa">ASPA</option>
             <option value="bgpsec">BGPSec</option>
             <option value="otc">Only to Customers</option>
-            <option value="pathend">Pathend</option>
+            <option value="path-end">Path-End</option>
           </select>
         </div>
 
@@ -207,7 +199,7 @@
           <select
             bind:value={newASRole}
             class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="">None</option>
+            <option value="none">None</option>
             <option value="attacker">Attacker</option>
             <option value="victim">Victim</option>
           </select>

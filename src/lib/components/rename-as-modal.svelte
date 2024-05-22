@@ -5,8 +5,8 @@
   import { Button } from '$lib/components/ui/button';
   import type { DataSet, Edge, Node } from 'vis-network/standalone';
   import type { Config } from '$lib/types';
-  import { getPropagationRanks } from '$lib/utils';
   import { toast } from 'svelte-sonner';
+  import { updatePropRanks } from '$lib/utils/as';
 
   // Props
   export let showModal: boolean;
@@ -65,13 +65,7 @@
     );
 
     // Adjust height of graph
-    const levels = getPropagationRanks({
-      cp_links: config.graph.cp_links,
-      peer_links: config.graph.peer_links
-    });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id as number] || 1 });
-    });
+    updatePropRanks(nodes, config);
 
     // Dismiss modal
     showModal = false;

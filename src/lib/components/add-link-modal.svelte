@@ -6,49 +6,52 @@
   import type { DataSet, Edge, Node } from 'vis-network/standalone';
   import { LinkType, type Config } from '$lib/types';
   import { toast } from 'svelte-sonner';
-  import { getPropagationRanks } from '$lib/utils';
+  import { updatePropRanks } from '$lib/utils/as';
+  import { createCPEdge, createPeerEdge, getEdgeByFromTo } from '$lib/utils/link';
 
   export let showModal: boolean;
   export let nodes: DataSet<Node>;
   export let edges: DataSet<Edge>;
   export let config: Config;
+  export let refreshSelectedAS: () => void;
 
-  let newEdgeFrom: number | null = null;
-  let newEdgeTo: number | null = null;
+  let newLinkFrom: number | null = null;
+  let newLinkTo: number | null = null;
   let newPeer1: number | null = null;
   let newPeer2: number | null = null;
   let edgeType: LinkType = LinkType.CustomerProvider;
 
-  function addEdge() {
+  function addLink() {
     if (edgeType === LinkType.CustomerProvider) {
-      if (!newEdgeFrom || !newEdgeTo) {
+      if (!newLinkFrom || !newLinkTo) {
         toast.error('From and To ASes must be defined');
         return;
       }
 
       // We need to do this for some reason
-      newEdgeFrom = Number(newEdgeFrom);
-      newEdgeTo = Number(newEdgeTo);
+      newLinkFrom = Number(newLinkFrom);
+      newLinkTo = Number(newLinkTo);
 
-      const newEdge = {
-        from: Number(newEdgeFrom),
-        to: Number(newEdgeTo),
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      };
-      edges.add(newEdge);
+      // Check if link already exists
+      if (
+        getEdgeByFromTo(newLinkFrom, newLinkTo, edges) !== null ||
+        getEdgeByFromTo(newLinkTo, newLinkFrom, edges) !== null
+      ) {
+        toast.error(`Link between ${newLinkFrom} and ${newLinkTo} already exists`);
+        return;
+      }
+
+      // Ensure ASes exist
+      if (nodes.get([newLinkFrom, newLinkTo]).length !== 2) {
+        toast.error('Cannot create a link between ASes that do not exist');
+        return;
+      }
+
+      // Add edge to graph
+      edges.add(createCPEdge(newLinkFrom, newLinkTo));
 
       // Add link to config
-      config.graph.cp_links = [...config.graph.cp_links, [Number(newEdgeFrom), Number(newEdgeTo)]];
-
-      // Reset inputs
-      newEdgeFrom = null;
-      newEdgeTo = null;
-      showModal = false; // Close modal
+      config.graph.cp_links = [...config.graph.cp_links, [Number(newLinkFrom), Number(newLinkTo)]];
     } else if (edgeType === LinkType.PeerToPeer) {
       if (!newPeer1 || !newPeer2) {
         toast.error('Both peer ASes must be defined');
@@ -59,35 +62,38 @@
       newPeer1 = Number(newPeer1);
       newPeer2 = Number(newPeer2);
 
-      const newEdge = {
-        from: Number(newPeer1),
-        to: Number(newPeer2),
-        dashes: true,
-        width: 2,
-        arrows: 'to, from'
-      };
+      // Check if link already exists
+      if (
+        getEdgeByFromTo(newPeer1, newPeer2, edges) !== null ||
+        getEdgeByFromTo(newPeer2, newPeer1, edges) !== null
+      ) {
+        toast.error(`Peer-to-Peer link between ${newLinkFrom} and ${newLinkTo} already exists`);
+        return;
+      }
 
-      edges.add(newEdge);
-      // network.setData({ nodes, edges });
+      // Ensure ASes exist
+      if (nodes.get([newPeer1, newPeer2]).length !== 2) {
+        toast.error('Cannot create a link between ASes that do not exist');
+        return;
+      }
+
+      // Add edge to graph
+      edges.add(createPeerEdge(newPeer1, newPeer2));
 
       // Add peer link to config
       config.graph.peer_links = [...config.graph.peer_links, [Number(newPeer1), Number(newPeer2)]];
-
-      // Reset inputs
-      newPeer1 = null;
-      newPeer2 = null;
-      showModal = false; // Close modal
     }
 
-    // Adjust height of graph
-    const levels = getPropagationRanks({
-      cp_links: config.graph.cp_links,
-      peer_links: config.graph.peer_links
-    });
+    // Reset inputs
+    newPeer1 = null;
+    newPeer2 = null;
+    showModal = false; // Close modal
 
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id as number] || 1 });
-    });
+    // Adjust height of graph
+    updatePropRanks(nodes, config);
+
+    // If we added an edge to the selected AS, reselect it so that it shows up on the details card
+    refreshSelectedAS();
   }
 </script>
 
@@ -109,21 +115,25 @@
 
       <Tabs.Content value={LinkType.CustomerProvider}>
         <div class="grid grid-cols-2 gap-2">
-          <Input type="number" bind:value={newEdgeFrom} placeholder="From ASN" class="col-span-1" />
-          <Input type="number" bind:value={newEdgeTo} placeholder="To ASN" />
+          <Input type="number" bind:value={newLinkFrom} placeholder="From AS" class="col-span-1" />
+          <Input type="number" bind:value={newLinkTo} placeholder="To AS" />
         </div>
       </Tabs.Content>
 
       <Tabs.Content value={LinkType.PeerToPeer}>
         <div class="grid grid-cols-2 gap-2">
-          <Input type="number" bind:value={newPeer1} placeholder="First Peer" class="col-span-1" />
-          <Input type="number" bind:value={newPeer2} placeholder="Second Peer" />
+          <Input
+            type="number"
+            bind:value={newPeer1}
+            placeholder="First Peer AS"
+            class="col-span-1" />
+          <Input type="number" bind:value={newPeer2} placeholder="Second Peer AS" />
         </div>
       </Tabs.Content>
     </Tabs.Root>
 
     <Dialog.Footer>
-      <Button on:click={addEdge} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
+      <Button on:click={addLink} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

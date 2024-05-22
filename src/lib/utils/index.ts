@@ -2,16 +2,66 @@ import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { cubicOut } from 'svelte/easing';
 import type { TransitionConfig } from 'svelte/transition';
-import type { Announcement, AnnouncementValidition, Config, Graph, ROA } from './types';
+import type { Announcement, AnnouncementValidition, Config, Graph, ROA } from '../types';
+import { toast } from 'svelte-sonner';
+
+export function createConfig(): Config {
+  return {
+    name: '',
+    desc: '',
+    scenario: 'customscenario',
+    scenario_modifier: null,
+    announcements: [],
+    roas: [],
+    attacker_asns: [],
+    victim_asns: [],
+    asn_policy_map: {},
+    graph: createGraph()
+  };
+}
+
+export function createGraph(): Graph {
+  return {
+    cp_links: [],
+    peer_links: [],
+    node_level_map: {}
+  };
+}
+
+export function createEmptyAnnouncement(): Announcement {
+  return {
+    prefix: '',
+    as_path: [],
+    seed_asn: null
+  };
+}
+
+export function createEmptyROA(): ROA {
+  return {
+    prefix: '',
+    origin: null,
+    max_length: null
+  };
+}
+
+export async function getROAStates(config: Config): Promise<string[]> {
+  let states = [];
+  for (let ann of config.announcements ?? []) {
+    const state = await checkAnnValidity(ann, config);
+    states.push(state);
+  }
+  return states;
+}
 
 export async function checkAnnValidity(ann: Announcement, config: Config): Promise<string> {
   if (config.roas === undefined) {
     return 'Unknown';
   }
 
+  // TODO: Fix origin field
   const validation: AnnouncementValidition = {
     prefix: ann.prefix,
-    origin: ann.as_path.at(-1) ?? ann.seed_asn,
+    origin: ann.as_path.at(-1) ?? Number(ann.seed_asn),
     roas: config.roas
   };
   try {
@@ -22,10 +72,15 @@ export async function checkAnnValidity(ann: Announcement, config: Config): Promi
       },
       body: JSON.stringify(validation)
     });
+    const res = await response.json();
+    // console.log(res);
     if (!response.ok) {
+      if (res.detail && res.detail.length > 0 && res.detail[0].msg) {
+        toast.error(res.detail[0].msg);
+      }
       return 'Unknown';
     }
-    return await response.json();
+    return res;
   } catch (error) {
     return 'Unknown';
   }
@@ -118,8 +173,7 @@ export function getPropagationRanks(graph: Graph) {
     propagationRanks[asn] = maxRank + 1 - asInfo.propagationRank;
   });
 
-  // console.log(propagationRanks);
-  return propagationRanks;
+  return { ...propagationRanks, ...graph.node_level_map };
 }
 
 // TODO: This is duplicate, merge with function in ConfigForm
@@ -139,9 +193,10 @@ export async function fetchROAStates(
 }
 
 export async function checkAnnValidity2(ann: Announcement, roas: ROA[]): Promise<string> {
+  // TODO: Fix origin field
   const validation: AnnouncementValidition = {
     prefix: ann.prefix,
-    origin: ann.as_path.at(-1) ?? ann.seed_asn,
+    origin: ann.as_path.at(-1) ?? Number(ann.seed_asn),
     roas: roas
   };
   try {

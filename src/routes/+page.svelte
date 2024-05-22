@@ -1,8 +1,15 @@
 <script lang="ts">
-  import { DataSet } from 'vis-network/standalone/esm/vis-network';
+  import { DataSet, type Color, type Edge, type Node } from 'vis-network/standalone';
   import ConfigForm from '$lib/components/config-form.svelte';
-  import Graph from '../lib/components/graph.svelte';
-  import { type Config, exampleConfigsMap } from '$lib';
+  // import Graph from '../lib/components/old/graph.svelte';
+  import { type Config, exampleConfigsMap, type SimResults } from '$lib';
+  import {
+    attackerColor,
+    attackerSuccessColor,
+    disconnectedColor,
+    victimColor,
+    victimSuccessColor
+  } from '$lib/types';
   import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
   import CitationModal from '$lib/components/citation-modal.svelte';
   import { onMount } from 'svelte';
@@ -14,39 +21,38 @@
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Accordion from '$lib/components/ui/accordion';
-  import { cn, fetchROAStates } from '$lib/utils';
+  import { cn, createConfig, getROAStates } from '$lib/utils';
   import Bug from 'lucide-svelte/icons/bug';
   import { toast } from 'svelte-sonner';
+  import Graph from '$lib/components/graph.svelte';
+  import { Sidebar } from 'lucide-svelte';
+  import { createCPEdge, createPeerEdge } from '$lib/utils/link';
 
   // Data
-  let nodes = new DataSet([]);
-  let edges = new DataSet([]);
-  let config: Config = {
-    name: '',
-    desc: '',
-    scenario: null,
-    announcements: [],
-    roas: []
-  };
-  let policyMap: Record<number, string> = {};
-  let roleMap: Record<number, string> = {};
+  let nodes = new DataSet<Node>([]);
+  let edges = new DataSet<Edge>([]);
+  let config = createConfig();
 
   // State
+  let showCitation = false;
+  let showBanner = false;
   let imageURL = '';
   let prevConfig: Config | null = null;
-  let fileInput: HTMLInputElement; // Reference to the hidden file input
-  let isDropdownOpen = false;
-  let simulationResults: {} | null = null;
-  let cpLinks: number[][] = [];
-  let peerLinks: number[][] = [];
-  let showInfo = false;
-  let showBanner = false;
+  let simResults: SimResults | null = null;
   let errorMessage = '';
   let isLoading: boolean = false;
-  let showClearGraphModal = false;
-  let graphComponent: Graph;
-  let annROAStates: string[];
-  let graphLoadingState = '';
+  let annROAStates = Array<string>();
+  let graphLoadingState = ''; // TODO: Replace with something else
+  let fileInput: HTMLInputElement; // Reference to the hidden file input
+
+  // TODO: Add types
+  // Drag functionality
+  let firstColumn: any;
+  let mainColumn: any;
+  let startX: any;
+  let startWidth: any;
+  let containerWidth: any;
+  let dragging = false;
 
   // Load subprefix hijack with custom anns by default
   onMount(async () => {
@@ -55,7 +61,7 @@
     }
   });
 
-  // Load config from URL
+  // Load config from URL using `?link=` query parameter
   $: if ($page.url.searchParams.has('link')) {
     const link = $page.url.searchParams.get('link');
     if (link) {
@@ -63,30 +69,15 @@
     }
   }
 
-  // Handle jump link
+  // Load corresponding example from jump link
   $: if (exampleConfigsMap[$page.url.hash]) {
     loadExampleConfig(exampleConfigs[exampleConfigsMap[$page.url.hash]]);
   }
 
-  async function fetchConfig(url: string) {
-    try {
-      const response = await fetch(url);
-      console.log(url);
-      if (!response.ok) {
-        showBanner = true;
-        errorMessage = 'Network response was not ok';
-        console.log(response.status);
-        return;
-      }
-      config = await response.json();
-      generateGraph(config);
-    } catch (err) {
-      showBanner = true;
-      errorMessage = 'Failed to download JSON from link';
-    }
-
-    // Reset simulation results
-    simulationResults = null;
+  // TODO: Change this logic
+  // Display error toast if errorMessage is changed
+  $: if (showBanner && errorMessage !== '') {
+    toast.error(errorMessage);
   }
 
   async function loadConfig(event: Event) {
@@ -109,22 +100,31 @@
       }
 
       config = JSON.parse(e.target.result);
+
+      // Fill in any undefined fields
+      config = {
+        ...createConfig(),
+        ...config
+      };
+      // console.log(config);
+
       generateGraph(config);
 
       // Send message to graph
       graphLoadingState = 'file';
 
       // Update ROA validity
-      console.log(config.announcements, config.roas);
-      annROAStates = await fetchROAStates(config.announcements, config.roas);
-      console.log('fetching roa validity');
+      // console.log(config.announcements, config.roas);
+      // annROAStates = await fetchROAStates(config.announcements, config.roas);
+      annROAStates = await getROAStates(config);
+      // console.log('fetching roa validity');
     };
     reader.readAsText(file);
 
     // Reset fileInput so that we can load same file if needed
     fileInput.value = '';
     // Reset simulation results
-    simulationResults = null;
+    simResults = null;
   }
 
   async function loadExampleConfig(example: Config) {
@@ -135,12 +135,42 @@
     generateGraph(config);
 
     // Reset sim results
-    simulationResults = null;
-    isDropdownOpen = false;
+    simResults = null;
     graphLoadingState = 'example';
 
     // Update ROA validity
-    annROAStates = await fetchROAStates(config.announcements, config.roas);
+    // annROAStates = await fetchROAStates(config.announcements, config.roas);
+    annROAStates = await getROAStates(config);
+  }
+
+  // Load config from query parameter
+  async function fetchConfig(url: string) {
+    try {
+      const response = await fetch(url);
+      // console.log(url);
+      if (!response.ok) {
+        showBanner = true;
+        errorMessage = 'Network response was not ok';
+        // console.log(response.status);
+        return;
+      }
+      config = await response.json();
+
+      // Fill in any undefined fields
+      config = {
+        ...createConfig(),
+        ...config
+      };
+      // console.log(config);
+
+      generateGraph(config);
+    } catch (err) {
+      showBanner = true;
+      errorMessage = 'Failed to fetch JSON from link';
+    }
+
+    // Reset simulation results
+    simResults = null;
   }
 
   function generateGraph(data: Config) {
@@ -148,61 +178,29 @@
     nodes.clear();
     edges.clear();
 
-    if (data.announcements === undefined) {
-      data.announcements = [];
-    }
+    // if (data.announcements === undefined) {
+    //   data.announcements = [];
+    // }
 
-    if (data.roas === undefined) {
-      data.roas = [];
-    }
+    // if (data.roas === undefined) {
+    //   data.roas = [];
+    // }
 
-    if (data.attacker_asns === undefined) {
-      data.attacker_asns = [];
-    }
+    // if (data.attacker_asns === undefined) {
+    //   data.attacker_asns = [];
+    // }
 
-    if (data.victim_asns === undefined) {
-      data.victim_asns = [];
-    }
+    // if (data.victim_asns === undefined) {
+    //   data.victim_asns = [];
+    // }
+
+    // if (data.scenario === undefined) {
+    //   data.scenario = null;
+    // }
 
     if (data.graph === undefined) {
       return;
     }
-
-    if (data.scenario === undefined) {
-      data.scenario = null;
-    }
-
-    let levels: Record<number, number>;
-
-    if (data.graph?.propagation_ranks) {
-      // Reverse prop ranks and turn it into a map
-      levels = listToIndexJsonReversed(data.graph.propagation_ranks);
-      // console.log('listToIndexJSON', levels);
-    } else {
-      levels = getPropagationRanks(data.graph);
-    }
-
-    policyMap = data.asn_policy_map || {};
-
-    // Set role map
-    for (const attacker of data.attacker_asns) {
-      roleMap[attacker] = 'attacker';
-    }
-    for (const victim of data.victim_asns) {
-      roleMap[victim] = 'victim';
-    }
-    console.log(roleMap);
-
-    // Update links after loading from file
-    cpLinks = [];
-    data.graph.cp_links.forEach((arr) => {
-      cpLinks = [...cpLinks, [arr[0], arr[1]]];
-    });
-    peerLinks = [];
-    data.graph.peer_links.forEach((arr) => {
-      peerLinks = [...peerLinks, [arr[0], arr[1]]];
-    });
-    // console.log('load from file', cpLinks, peerLinks);
 
     // Get all nodes
     const allAsns = new Set([
@@ -211,132 +209,102 @@
       ...data.graph.peer_links.flat(),
       ...data.graph.cp_links.flat()
     ]);
+    const levels: Record<number, number> = getPropagationRanks(data.graph);
 
     allAsns.forEach((asn) => {
-      let node = {
+      let node: Node = {
         id: asn,
         label: String(asn),
-        level: levels[asn] || 1 // Default level to 1 if not calculated,
+        level: levels[asn] || 1 // Default level to 1 if not calculated
       };
-      if (asn in policyMap) {
-        node.policy = policyMap[asn].toLowerCase();
-      }
+
       if (data.victim_asns?.includes(asn)) {
-        node.role = 'victim';
-        const colorProp = { border: '#047857', background: '#34d399' };
-        node.color = { ...colorProp, highlight: colorProp, hover: colorProp };
+        node.color = victimColor;
       } else if (data.attacker_asns?.includes(asn)) {
-        node.role = 'attacker';
-        const colorProp = { border: '#b91c1c', background: '#f87171' };
-        node.color = { ...colorProp, highlight: colorProp, hover: colorProp };
+        node.color = attackerColor;
       }
+
       nodes.add(node);
     });
 
     // Convert peer and cp links to vis-network edges
-    data.graph.peer_links.forEach((link) => {
-      edges.add({
-        from: link[0],
-        to: link[1],
-        dashes: true,
-        width: 2,
-        arrows: 'to, from'
-      });
-    });
     data.graph.cp_links.forEach((link) => {
-      edges.add({
-        from: link[0],
-        to: link[1],
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      });
+      edges.add(createCPEdge(link[0], link[1]));
+      // {
+      //   from: link[0],
+      //   to: link[1],
+      //   dashes: false,
+      //   arrows: {
+      //     to: {
+      //       enabled: true,
+      //       scaleFactor: 0.8
+      //     }
+      //   }
+      // }
+    });
+    data.graph.peer_links.forEach((link) => {
+      edges.add(createPeerEdge(link[0], link[1]));
+      // {
+      //   from: link[0],
+      //   to: link[1],
+      //   dashes: true,
+      //   arrows: 'to, from'
+      // }
     });
   }
 
-  function addGraphToConfig() {
-    // Generate graph, victim ASNs, attacker ASNs, and ASN policy map for the config from the nodes
-    // and edges data sets
-
-    const attackerASNs = [];
-    const victimASNs = [];
-    const asnPolicyMap = {};
-
-    // Process nodes to fill attacker/victim ASNs and ASN policies
-    nodes.forEach((node) => {
-      if (node.role === 'attacker') {
-        attackerASNs.push(node.id);
-      } else if (node.role === 'victim') {
-        victimASNs.push(node.id);
-      }
-
-      if (node.policy !== 'bgp') {
-        asnPolicyMap[node.id] = node.policy;
-      }
-    });
-
-    let propagationRounds = 1;
-    if (config.scenario === 'AccidentalRouteLeak') {
-      propagationRounds = 2;
+  function fillInRanks(data: Config): Config {
+    // Generate rest of ranks before submitting, if any custom levels are specified
+    let node_level_map: Record<number, number> | undefined = undefined;
+    if (data.graph.node_level_map && Object.keys(data.graph.node_level_map).length > 0) {
+      node_level_map = getPropagationRanks(data.graph);
     }
 
-    config = {
-      ...config,
-      attacker_asns: attackerASNs,
-      victim_asns: victimASNs,
-      asn_policy_map: asnPolicyMap,
-      propagation_rounds: propagationRounds,
+    return {
+      ...data,
       graph: {
-        // TODO: Figure out how to handle prop ranks
-        // ...config.graph,
-        cp_links: cpLinks,
-        peer_links: peerLinks
+        ...data.graph,
+        node_level_map: node_level_map
       }
     };
   }
 
-  async function handleSubmit() {
-    // if (!submitPressed) {
-    //   imageURL = null;
-    //   return Promise.resolve();
-    // }
+  async function handleSimulate() {
     showBanner = false; // Reset error state on each submission
     isLoading = true;
-    addGraphToConfig();
-    // console.log(cpLinks, peerLinks);
-    // console.log(config.graph?.cp_links, config.graph?.peer_links);
+
     try {
-      const responseJSON = await fetch('/api/simulate', {
+      const simResponse = await fetch('/api/simulate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(fillInRanks(config))
       });
-      const response = await fetch('/api/simulate?include_diagram=true', {
+      const imgResponse = await fetch('/api/simulate?include_diagram=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(fillInRanks(config))
       });
 
-      if (!response.ok) {
+      if (!imgResponse.ok) {
         showBanner = true;
         // Get error message
-        const error = await response.json();
-        if (response.status === 429) {
+        const error = await imgResponse.json();
+        if (imgResponse.status === 429) {
           errorMessage = error.error;
         } else if (error) {
           const msg = error.detail[0].msg;
-          if (msg.includes('Value error, ')) {
+          if (msg === '') {
+            errorMessage = 'Internal server error';
+          } else if (msg.includes('Value error, ')) {
             errorMessage = msg.replace('Value error, ', '');
           } else {
             errorMessage = msg;
           }
+          console.log(error);
         } else {
           errorMessage = 'Failed to run simulation';
         }
@@ -346,38 +314,41 @@
         return;
       }
 
-      let blob = await response.blob();
+      const blob = await imgResponse.blob();
+      simResults = await simResponse.json();
+      if (!simResults) {
+        showBanner = true;
+        errorMessage = 'Failed to run simulation';
+        isLoading = false;
+        imageURL = '';
+        return;
+      }
 
-      simulationResults = await responseJSON.json();
-      // console.log(simulationResults);
-      const outcome = simulationResults.outcome;
-      const local_ribs = simulationResults.local_ribs;
-      // console.log(outcome);
-
+      const outcome = simResults.outcome;
       prevConfig = config; // Save for downloading zip
       imageURL = URL.createObjectURL(blob);
 
-      nodes.forEach((node) => {
-        let color: {} = node.color;
-        if (config.attacker_asns?.includes(node.id)) {
-          color = { border: '#b91c1c', background: '#f87171' };
-        } else if (config.victim_asns?.includes(node.id)) {
-          color = { border: '#047857', background: '#34d399' };
+      nodes.forEach((node: Node) => {
+        let color = node.color as Color;
+        let asn = Number(node.id);
+        if (config.attacker_asns?.includes(asn)) {
+          color = attackerColor;
+        } else if (config.victim_asns?.includes(asn)) {
+          color = victimColor;
         }
 
-        if (outcome[node.id] === 0 && !config.attacker_asns?.includes(node.id)) {
+        if (outcome[asn] === 0 && !config.attacker_asns?.includes(asn)) {
           // Attacker success
-          color = { border: '#ea580c', background: '#f59e0b' };
-        } else if (outcome[node.id] === 1 && !config.victim_asns?.includes(node.id)) {
+          color = attackerSuccessColor;
+        } else if (outcome[asn] === 1 && !config.victim_asns?.includes(asn)) {
           // Victim success
-          color = { border: '#16a34a', background: '#86efac' };
-        } else if (outcome[node.id] === 2) {
+          color = victimSuccessColor;
+        } else if (outcome[asn] === 2) {
           // Disconnected
-          color = { border: '#737373', background: '#d4d4d4' };
+          color = disconnectedColor;
         }
-        // console.log(outcome[node.id]);
-        // nodes.update({ ...node, color: color });
-        nodes.update({ ...node, color: { ...color, highlight: color, hover: color } });
+
+        nodes.update({ ...node, color: color });
       });
     } catch (error) {
       showBanner = true;
@@ -389,18 +360,19 @@
     isLoading = false;
   }
 
-  function onFileButtonClicked() {
-    fileInput.click(); // Trigger click on the actual file input
-  }
-
   async function downloadZip() {
     try {
+      if (prevConfig === null) {
+        console.log('error: prevConfig is null');
+        return;
+      }
+
       const response = await fetch('/api/simulate?download_zip=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(prevConfig) // Use previous since that's we submitted
+        body: JSON.stringify(fillInRanks(prevConfig)) // Use previous since that's we submitted
       });
       let blob = await response.blob();
       let url = URL.createObjectURL(blob);
@@ -421,8 +393,9 @@
   }
 
   function downloadConfig() {
-    addGraphToConfig();
-    const configJson = JSON.stringify(config, null, 2); // Convert config object to JSON string
+    // addGraphToConfig();
+
+    const configJson = JSON.stringify(config, null, 2);
     const blob = new Blob([configJson], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
@@ -438,18 +411,8 @@
     a.remove();
   }
 
-  // TODO: Change this logic
-  $: if (showBanner && errorMessage !== '') {
-    toast.error(errorMessage);
-  }
-
   // TODO: Add types
-  // Drag functionality
-  let firstColumn, mainColumn;
-  let startX, startWidth, containerWidth;
-  let dragging = false;
-
-  function startDrag(e) {
+  function startDrag(e: any) {
     startX = e.clientX;
     startWidth = firstColumn.offsetWidth;
     containerWidth = mainColumn.offsetWidth;
@@ -458,9 +421,10 @@
     document.addEventListener('mouseup', stopDrag, false);
   }
 
-  function doDrag(e) {
+  // TODO: Add types
+  function doDrag(e: any) {
     const newWidth = startWidth + e.clientX - startX;
-    console.log(containerWidth);
+    // console.log(containerWidth);
 
     if (newWidth < containerWidth / 3.5) {
       return;
@@ -470,7 +434,8 @@
     firstColumn.style.width = newWidth + 'px';
   }
 
-  function stopDrag(e) {
+  // TODO: Add types
+  function stopDrag(e: any) {
     document.removeEventListener('mousemove', doDrag, false);
     document.removeEventListener('mouseup', stopDrag, false);
     dragging = false;
@@ -479,8 +444,6 @@
 
 <svelte:head>
   <title>BGPy</title>
-  <link rel="preconnect" href="https://rsms.me/" />
-  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
 </svelte:head>
 
 <main bind:this={mainColumn} class={cn('w-full mx-auto p-8', dragging ? 'select-none' : '')}>
@@ -514,7 +477,7 @@
         class="p-2 rounded-full hover:bg-gray-200">
         <Bug class="size-6" />
       </a>
-      <button on:click={() => (showInfo = true)} class="p-2 rounded-full hover:bg-gray-200">
+      <button on:click={() => (showCitation = true)} class="p-2 rounded-full hover:bg-gray-200">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
           <path
             d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
@@ -531,28 +494,38 @@
     <!-- class="basis-1/3 md:order-1 order-2" -->
     <!-- w-full might not do anything -->
     <div bind:this={firstColumn} class="order-2 md:order-1 w-full md:w-[33vw] md:resizable">
-      <!-- Examples dropdown -->
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild let:builder>
-          <Button builders={[builder]} class="mb-4 bg-indigo-500 hover:bg-indigo-500/90" size="sm">
-            Examples
-            <ChevronDown class="ml-2 size-4" />
-          </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content>
-          {#each Object.keys(exampleConfigsMap) as configName}
-            <DropdownMenu.Item href={configName}>
-              {exampleConfigsMap[configName]}
-            </DropdownMenu.Item>
-          {/each}
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
+      <div class="flex">
+        <!-- Show/hide sidebar -->
+        <!-- <Button variant="outline" size="sm" class="hidden md:inline mr-2">
+          <Sidebar class="size-4" />
+        </Button> -->
 
-      <ConfigForm bind:annROAStates {config} bind:roleMap />
+        <!-- Examples dropdown -->
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild let:builder>
+            <Button
+              builders={[builder]}
+              class="mb-4 bg-indigo-500 hover:bg-indigo-500/90"
+              size="sm">
+              Examples
+              <ChevronDown class="ml-2 size-4" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content>
+            {#each Object.keys(exampleConfigsMap) as configName}
+              <DropdownMenu.Item href={configName}>
+                {exampleConfigsMap[configName]}
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </div>
+
+      <ConfigForm bind:config {nodes} bind:annROAStates />
 
       <div class="mt-4 flex flex-col space-y-2">
         <!-- Submit button -->
-        <Button on:click={handleSubmit} class="bg-sky-500 hover:bg-sky-500/90">
+        <Button on:click={handleSimulate} class="bg-sky-500 hover:bg-sky-500/90">
           {#if isLoading}
             <Loader2 class="mr-2 size-4 animate-spin" />
           {/if}
@@ -569,7 +542,7 @@
           <!-- Load config button -->
           <Button
             class="bg-sky-500 hover:bg-sky-500/90 mr-2 flex-grow"
-            on:click={onFileButtonClicked}>
+            on:click={() => fileInput.click()}>
             <Upload class="mr-2 size-4" />
             Load Config
           </Button>
@@ -600,7 +573,7 @@
     <div class="resizer order-2 md:visible invisible bg-neutral-100" on:mousedown={startDrag}></div>
 
     <div class="basis-2/3 order-1 md:order-2">
-      <Graph
+      <!-- <Graph
         bind:this={graphComponent}
         {nodes}
         {edges}
@@ -610,7 +583,8 @@
         bind:roleMap
         bind:policyMap
         bind:imageURL
-        bind:graphLoadingState />
+        bind:graphLoadingState /> -->
+      <Graph {nodes} {edges} bind:config bind:simResults bind:imageURL bind:graphLoadingState />
     </div>
   </div>
 
@@ -626,7 +600,7 @@
     </Accordion.Root>
   {/if}
 
-  <CitationModal bind:showModal={showInfo} on:close={() => (showInfo = false)} />
+  <CitationModal bind:showModal={showCitation} on:close={() => (showCitation = false)} />
 </main>
 
 <style>

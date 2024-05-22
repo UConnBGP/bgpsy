@@ -1,9 +1,7 @@
-import type { SimulationResults } from './types';
+import type { DataSet, Node } from 'vis-network/standalone';
+import type { Config, SimResults } from '../types';
 
-export function getLocalRIBData(
-  simulationResults: SimulationResults | null,
-  asn: number
-): string[][] {
+export function getLocalRIBData(simulationResults: SimResults | null, asn: number): string[][] {
   if (simulationResults && simulationResults.local_ribs[asn]) {
     return simulationResults.local_ribs[asn].map(({ type, mask, as_path }) => {
       return [mask, as_path.join(', '), type === 'attacker' ? '\u{1F608}' : '\u{1F607}'];
@@ -32,15 +30,31 @@ export function getMaxWidths(
   return maxWidths;
 }
 
-export function getASPolicyName(policyMap: Record<number, string>, asn: number) {
+// export function getFormattedASPolicyNameFromConfig(asn: number, config: Config) {
+//   let policy = 'BGP';
+//   if (asn in config.asn_policy_map) {
+//     policy = config.asn_policy_map[asn].toLowerCase();
+
+//     if (policy === 'rov' || policy === 'aspa' || policy === 'otc') {
+//       policy = policy.toUpperCase();
+//     } else if (policy === 'pathend') {
+//       policy = 'Pathend';
+//     } else if (policy === 'bgpsec') {
+//       policy = 'BGPSec';
+//     }
+//   }
+//   return policy;
+// }
+
+export function getFormattedASPolicyName(policyMap: Record<number, string>, asn: number) {
   let policy = 'BGP';
   if (asn in policyMap) {
     policy = policyMap[asn].toLowerCase();
 
-    if (policy === 'rov' || policy === 'aspa' || policy === 'otc') {
+    if (policy === 'rov' || policy === 'aspa' || policy === 'otc' || policy === 'aspa+rov') {
       policy = policy.toUpperCase();
-    } else if (policy === 'pathend') {
-      policy = 'Pathend';
+    } else if (policy === 'path-end') {
+      policy = 'Path-End';
     } else if (policy === 'bgpsec') {
       policy = 'BGPSec';
     }
@@ -48,6 +62,7 @@ export function getASPolicyName(policyMap: Record<number, string>, asn: number) 
   return policy;
 }
 
+// Adjust radius based on policy name length if simulation results are empty
 export function getNodeRadius(
   ctx: CanvasRenderingContext2D,
   tableWidth: number,
@@ -62,6 +77,24 @@ export function getNodeRadius(
   }
 }
 
+export function getMaxNodeRadius(
+  ctx: CanvasRenderingContext2D,
+  simResults: SimResults | null,
+  policyMap: Record<number, string>,
+  nodes: DataSet<Node>
+): number {
+  const radii = Array<number>();
+  for (const node of nodes.get()) {
+    const asn = Number(node.id);
+    const rows = getLocalRIBData(simResults, asn);
+    const maxWidths = getMaxWidths(ctx, rows);
+    const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0);
+    const nodePolicy = getFormattedASPolicyName(policyMap, asn);
+    radii.push(getNodeRadius(ctx, tableWidth, nodePolicy, rows));
+  }
+  return Math.max(...radii);
+}
+
 export function drawShape(
   ctx: CanvasRenderingContext2D,
   policy: string,
@@ -69,6 +102,8 @@ export function drawShape(
   y: number,
   r: number
 ) {
+  const origX = x;
+  const origY = y;
   // Clear previous path
   ctx.beginPath();
 
@@ -146,80 +181,4 @@ export function drawLocalRIB(
       prevWidth += width;
     }
   }
-}
-
-export function drawNode(
-  { ctx, id, x, y, state: { selected, hover }, style, label },
-  simulationResults: SimulationResults | null,
-  policyMap: Record<number, string>
-) {
-  ctx.save();
-
-  // Get local RIB data
-  const rows = getLocalRIBData(simulationResults, id);
-
-  // Font for the Local RIB
-  const fontSize = 14;
-  ctx.font = `${fontSize}px Inter`;
-
-  // Height of each cell
-  const cellHeight = fontSize + 10;
-  // Find the max width for each column in local RIB table
-  const maxWidths = getMaxWidths(ctx, rows);
-  // Calculate width of table
-  const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0);
-  // Calculate height of table
-  const tableHeight = cellHeight * (rows.length + 1);
-
-  // Get formatted AS policy name
-  const nodePolicy = getASPolicyName(policyMap, id);
-
-  // Adjust radius based on policy name length if simulation results are empty
-  const r = getNodeRadius(ctx, tableWidth, nodePolicy, rows);
-
-  // if (r > maxNodeRadius) {
-  //   maxNodeRadius = r;
-  //   // console.log('maxRadius:', maxNodeRadius);
-  //   // network.setOptions({
-  //   //   ...options,
-  //   //   layout: {
-  //   //     hierarchical: {
-  //   //       enabled: true,
-  //   //       levelSeparation: maxNodeRadius * 2.5,
-  //   //       nodeSpacing: maxNodeRadius * 2.5,
-  //   //       sortMethod: 'directed'
-  //   //     }
-  //   //   }
-  //   // });
-  //   // network.fit({ animation: { duration: 200, easingFunction: 'linear' } });
-  // }
-
-  // Style for shape
-  ctx.fillStyle = style.color;
-  ctx.strokeStyle = style.borderColor;
-  ctx.lineWidth = selected || hover ? 3 : 2;
-
-  // Draw it
-  drawShape(ctx, nodePolicy, x, y, r);
-
-  // Put the ASN and policy in the middle of the node
-  ctx.fillStyle = 'black';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  // Calculate the total height for centering
-  const totalHeight = (rows.length > 0 ? tableHeight : 0) + 2 * fontSize + 20;
-
-  // Draw it
-  drawText(ctx, label, nodePolicy, totalHeight, fontSize, x, y);
-
-  // Draw Local RIB
-  drawLocalRIB(ctx, rows, tableWidth, tableHeight, maxWidths, cellHeight, x, y);
-
-  ctx.restore();
-
-  return {
-    drawNode: null,
-    nodeDimensions: { width: r * 2, height: r * 2 }
-  };
 }
