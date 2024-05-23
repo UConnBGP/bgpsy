@@ -1,7 +1,6 @@
 <script lang="ts">
   import { DataSet, type Color, type Edge, type Node } from 'vis-network/standalone';
   import ConfigForm from '$lib/components/config-form.svelte';
-  // import Graph from '../lib/components/old/graph.svelte';
   import { type Config, exampleConfigsMap, type SimResults } from '$lib';
   import {
     attackerColor,
@@ -10,14 +9,11 @@
     victimColor,
     victimSuccessColor
   } from '$lib/types';
-  import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
+  import { exampleConfigs, getPropagationRanks } from '$lib';
   import CitationModal from '$lib/components/citation-modal.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import ChevronDown from 'lucide-svelte/icons/chevron-down';
-  import Download from 'lucide-svelte/icons/download';
-  import Loader2 from 'lucide-svelte/icons/loader-2';
-  import Upload from 'lucide-svelte/icons/upload';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Accordion from '$lib/components/ui/accordion';
@@ -54,7 +50,6 @@
   let startWidth: any;
   let containerWidth: any;
   let dragging = false;
-  let sidebarWidth: number | null = null;
 
   // Load subprefix hijack with custom anns by default
   onMount(async () => {
@@ -418,8 +413,8 @@
 
 <main bind:this={mainColumn} class={cn('w-full mx-auto pb-4', dragging ? 'select-none' : '')}>
   <div class="">
-    <div class="flex flex-row justify-between items-center px-6 py-3">
-      <div class="flex justify-start">
+    <div class="flex flex-wrap justify-between items-center px-6 py-3">
+      <div class="flex justify-start w-full sm:w-auto order-3 sm:order-1">
         <!-- Show/hide sidebar -->
         <Button
           variant="outline"
@@ -450,20 +445,12 @@
         </DropdownMenu.Root>
       </div>
 
-      <div class="flex justify-center">
+      <div class="flex justify-center sm:order-2">
         <h1 class="sm:text-3xl font-semibold">BGPy Editor</h1>
-
-        <!-- <p class="font-medium">
-        An interface for
-        <a
-          href="https://github.com/jfuruness/bgpy_pkg/wiki"
-          target="_blank"
-          class="hover:font-semibold hover:underline">BGPy</a>
-      </p> -->
       </div>
 
       <!-- Link and citation buttons -->
-      <div class="flex justify-end">
+      <div class="flex justify-end sm:order-3">
         <a
           href="https://github.com/jfuruness/bgpy_pkg/wiki"
           target="_blank"
