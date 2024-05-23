@@ -456,6 +456,17 @@
     imageURL = '';
   }
 
+  // TODO: Get this working properly
+  // Center graph every time sidebar is toggled
+  // $: if (graphLoadingState === 'toggle-sidebar-on') {
+  //   console.log('toggled sidebar on');
+  //   centerGraph();
+  // }
+  // $: if (graphLoadingState === 'toggle-sidebar-off') {
+  //   console.log('toggled sidebar off');
+  //   centerGraph();
+  // }
+
   // $: selectedASN, console.log('changed', selectedASN);
 
   function selectAS(asn: number) {
@@ -612,11 +623,11 @@
 </script>
 
 <!-- Action Buttons -->
-<div class="flex space-x-2">
+<div class="flex flex-row space-x-2 overflow-scroll">
   <Button
-    on:click={() => (showAddASModal = true)}
     class="bg-emerald-500 hover:bg-emerald-500/90"
-    size="sm">
+    size="sm"
+    on:click={() => (showAddASModal = true)}>
     <!-- <Plus class="mr-2 h-4 w-4" /> -->
     Add AS
   </Button>
@@ -656,7 +667,7 @@
   <Tooltip.Root>
     <Tooltip.Trigger>
       <!-- Clear Graph -->
-      <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
+      <Button variant="destructive" size="sm" on:click={() => (showClearGraphModal = true)}>
         <Ban class="size-4" />
       </Button>
     </Tooltip.Trigger>

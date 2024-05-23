@@ -34,6 +34,7 @@
   let config = createConfig();
 
   // State
+  let showSidebar = true;
   let showCitation = false;
   let showBanner = false;
   let imageURL = '';
@@ -53,6 +54,7 @@
   let startWidth: any;
   let containerWidth: any;
   let dragging = false;
+  let sidebarWidth: number | null = null;
 
   // Load subprefix hijack with custom anns by default
   onMount(async () => {
@@ -138,6 +140,9 @@
     simResults = null;
     graphLoadingState = 'example';
 
+    // Make sure sidebar is open
+    // showSidebar = true;
+
     // Update ROA validity
     // annROAStates = await fetchROAStates(config.announcements, config.roas);
     annROAStates = await getROAStates(config);
@@ -178,26 +183,6 @@
     nodes.clear();
     edges.clear();
 
-    // if (data.announcements === undefined) {
-    //   data.announcements = [];
-    // }
-
-    // if (data.roas === undefined) {
-    //   data.roas = [];
-    // }
-
-    // if (data.attacker_asns === undefined) {
-    //   data.attacker_asns = [];
-    // }
-
-    // if (data.victim_asns === undefined) {
-    //   data.victim_asns = [];
-    // }
-
-    // if (data.scenario === undefined) {
-    //   data.scenario = null;
-    // }
-
     if (data.graph === undefined) {
       return;
     }
@@ -230,26 +215,9 @@
     // Convert peer and cp links to vis-network edges
     data.graph.cp_links.forEach((link) => {
       edges.add(createCPEdge(link[0], link[1]));
-      // {
-      //   from: link[0],
-      //   to: link[1],
-      //   dashes: false,
-      //   arrows: {
-      //     to: {
-      //       enabled: true,
-      //       scaleFactor: 0.8
-      //     }
-      //   }
-      // }
     });
     data.graph.peer_links.forEach((link) => {
       edges.add(createPeerEdge(link[0], link[1]));
-      // {
-      //   from: link[0],
-      //   to: link[1],
-      //   dashes: true,
-      //   arrows: 'to, from'
-      // }
     });
   }
 
@@ -424,14 +392,16 @@
   // TODO: Add types
   function doDrag(e: any) {
     const newWidth = startWidth + e.clientX - startX;
-    // console.log(containerWidth);
 
-    if (newWidth < containerWidth / 3.5) {
+    // Stop after 25% and 50% width
+    if (newWidth < containerWidth / 4) {
       return;
     } else if (newWidth > containerWidth / 2) {
       return;
     }
-    firstColumn.style.width = newWidth + 'px';
+
+    // firstColumn.style.width = newWidth + 'px';
+    firstColumn.style.setProperty('--sidebar-width', newWidth + 'px');
   }
 
   // TODO: Add types
@@ -446,67 +416,26 @@
   <title>BGPy</title>
 </svelte:head>
 
-<main bind:this={mainColumn} class={cn('w-full mx-auto p-8', dragging ? 'select-none' : '')}>
-  <div class="flex flex-row justify-between mb-4">
-    <div class="flex items-baseline space-x-2 justify-start">
-      <h1 class="text-4xl font-semibold">BGPy Editor</h1>
-
-      <!-- <p class="font-medium">
-        An interface for
-        <a
-          href="https://github.com/jfuruness/bgpy_pkg/wiki"
-          target="_blank"
-          class="hover:font-semibold hover:underline">BGPy</a>
-      </p> -->
-    </div>
-
-    <!-- Link and citation buttons -->
-    <div class="flex justify-end items-center">
-      <a
-        href="https://github.com/jfuruness/bgpy_pkg/wiki"
-        target="_blank"
-        class="p-2 rounded-full hover:bg-gray-200">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-          <path
-            d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-        </svg>
-      </a>
-      <a
-        href="https://github.com/jfuruness/bgpy_pkg/issues"
-        target="_blank"
-        class="p-2 rounded-full hover:bg-gray-200">
-        <Bug class="size-6" />
-      </a>
-      <button on:click={() => (showCitation = true)} class="p-2 rounded-full hover:bg-gray-200">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-          <path
-            d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
-        </svg>
-      </button>
-    </div>
-  </div>
-
-  <!-- Banner for errors -->
-  <!-- <ErrorBanner message={errorMessage} bind:open={showBanner} class="mb-4" /> -->
-
-  <!-- Two columns for form and graph -->
-  <div class="flex md:flex-row flex-col md:space-x-4">
-    <!-- class="basis-1/3 md:order-1 order-2" -->
-    <!-- w-full might not do anything -->
-    <div bind:this={firstColumn} class="order-2 md:order-1 w-full md:w-[33vw] md:resizable">
-      <div class="flex">
+<main bind:this={mainColumn} class={cn('w-full mx-auto pb-4', dragging ? 'select-none' : '')}>
+  <div class="">
+    <div class="flex flex-row justify-between items-center px-6 py-3">
+      <div class="flex justify-start">
         <!-- Show/hide sidebar -->
-        <!-- <Button variant="outline" size="sm" class="hidden md:inline mr-2">
+        <Button
+          variant="outline"
+          size="sm"
+          class="hidden md:inline mr-2"
+          on:click={() => {
+            showSidebar = !showSidebar;
+            graphLoadingState = `toggle-sidebar-${showSidebar ? 'on' : 'off'}`;
+          }}>
           <Sidebar class="size-4" />
-        </Button> -->
+        </Button>
 
         <!-- Examples dropdown -->
         <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild let:builder>
-            <Button
-              builders={[builder]}
-              class="mb-4 bg-indigo-500 hover:bg-indigo-500/90"
-              size="sm">
+          <DropdownMenu.Trigger>
+            <Button variant="outline" size="sm">
               Examples
               <ChevronDown class="ml-2 size-4" />
             </Button>
@@ -521,76 +450,82 @@
         </DropdownMenu.Root>
       </div>
 
-      <ConfigForm bind:config {nodes} bind:annROAStates />
+      <div class="flex justify-center">
+        <h1 class="sm:text-3xl font-semibold">BGPy Editor</h1>
 
-      <div class="mt-4 flex flex-col space-y-2">
-        <!-- Submit button -->
-        <Button on:click={handleSimulate} class="bg-sky-500 hover:bg-sky-500/90">
-          {#if isLoading}
-            <Loader2 class="mr-2 size-4 animate-spin" />
-          {/if}
-          Simulate
-        </Button>
+        <!-- <p class="font-medium">
+        An interface for
+        <a
+          href="https://github.com/jfuruness/bgpy_pkg/wiki"
+          target="_blank"
+          class="hover:font-semibold hover:underline">BGPy</a>
+      </p> -->
+      </div>
 
-        <div class="flex flex-row justify-between">
-          <input
-            bind:this={fileInput}
-            on:change={loadConfig}
-            type="file"
-            accept="application/json"
-            class="hidden" />
-          <!-- Load config button -->
-          <Button
-            class="bg-sky-500 hover:bg-sky-500/90 mr-2 flex-grow"
-            on:click={() => fileInput.click()}>
-            <Upload class="mr-2 size-4" />
-            Load Config
-          </Button>
-
-          <!-- Download config button -->
-          <Button
-            type="submit"
-            class="bg-sky-500 hover:bg-sky-500/90 flex-grow"
-            on:click={downloadConfig}>
-            <Download class="mr-2 size-4" />
-            Download Config
-          </Button>
-        </div>
-
-        <!-- Download zip button -->
-        <Button
-          on:click={downloadZip}
-          class="bg-sky-500 hover:bg-sky-500/90"
-          disabled={imageURL === ''}>
-          <Download class="mr-2 size-4" />
-          Download Results Zip
-        </Button>
+      <!-- Link and citation buttons -->
+      <div class="flex justify-end">
+        <a
+          href="https://github.com/jfuruness/bgpy_pkg/wiki"
+          target="_blank"
+          class="p-2 rounded-full hover:bg-gray-200">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path
+              d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+          </svg>
+        </a>
+        <a
+          href="https://github.com/jfuruness/bgpy_pkg/issues"
+          target="_blank"
+          class="p-2 rounded-full hover:bg-gray-200">
+          <Bug class="size-6" />
+        </a>
+        <button on:click={() => (showCitation = true)} class="p-2 rounded-full hover:bg-gray-200">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <path
+              d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+          </svg>
+        </button>
       </div>
     </div>
 
-    <!-- <div class="overflow-hidden resize-x min-w-[33vw] max-w-[33vw]"></div> -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="resizer order-2 md:visible invisible bg-neutral-100" on:mousedown={startDrag}></div>
+    <hr />
+  </div>
 
-    <div class="basis-2/3 order-1 md:order-2">
-      <!-- <Graph
-        bind:this={graphComponent}
+  <!-- Two columns for form and graph -->
+  <!-- <div class="grid md:grid-flow-col md:grid-rows-none grid-rows grid-cols-none"> -->
+  <div class={`flex flex-col md:flex-row`}>
+    <div
+      bind:this={firstColumn}
+      id="sidebar"
+      class={`order-2 md:order-1 px-6 py-3 bg-slate-50 ${showSidebar ? '' : 'md:hidden'}`}>
+      <ConfigForm
+        bind:config
         {nodes}
-        {edges}
-        bind:simulationResults
-        bind:cpLinks
-        bind:peerLinks
-        bind:roleMap
-        bind:policyMap
-        bind:imageURL
-        bind:graphLoadingState /> -->
+        bind:annROAStates
+        showLoadingSpinner={isLoading}
+        showDownloadZip={imageURL !== ''}
+        onSimulate={handleSimulate}
+        onLoadConfig={loadConfig}
+        onDownloadConfig={downloadConfig}
+        onDownloadZip={downloadZip} />
+    </div>
+
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="order-2 w-[3px] cursor-col-resize md:block hidden bg-slate-200"
+      on:mousedown={startDrag}>
+    </div>
+
+    <div class={`order-1 md:order-2 px-6 py-3 ${showSidebar ? 'basis-3/4' : 'basis-full'}`}>
       <Graph {nodes} {edges} bind:config bind:simResults bind:imageURL bind:graphLoadingState />
     </div>
   </div>
 
+  <hr />
+
   <!-- Diagram accordion -->
   {#if imageURL}
-    <Accordion.Root class="mt-4">
+    <Accordion.Root class=" px-6">
       <Accordion.Item value="item-1">
         <Accordion.Trigger>Diagram</Accordion.Trigger>
         <Accordion.Content>
@@ -604,22 +539,13 @@
 </main>
 
 <style>
-  .resizable {
-    overflow: hidden;
-    resize: horizontal;
-    min-width: 33%;
-    max-width: 100%;
+  #sidebar {
+    width: var(--sidebar-width, 33%);
   }
-  .resizer {
-    cursor: ew-resize;
-    width: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .resizer::after {
-    content: '||';
-    font-size: 12px;
-    display: block;
+
+  @media (max-width: 768px) {
+    #sidebar {
+      width: 100%;
+    }
   }
 </style>
