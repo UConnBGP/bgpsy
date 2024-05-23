@@ -218,7 +218,7 @@
     <Button
       on:click={onDownloadZip}
       class="bg-sky-500 hover:bg-sky-500/90"
-      disabled={showDownloadZip}>
+      disabled={!showDownloadZip}>
       <Download class="mr-2 size-4" />
       Download Results Zip
     </Button>
