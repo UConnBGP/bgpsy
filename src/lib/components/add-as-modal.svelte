@@ -1,13 +1,15 @@
 <script lang="ts">
   import * as Dialog from '$lib/components/ui/dialog';
+  import * as Select from '$lib/components/ui/select';
   import { Label } from '$lib/components/ui/label';
   import { Input } from '$lib/components/ui/input';
   import { Button } from '$lib/components/ui/button';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { availableNodes, createNode, updatePropRanks } from '$lib/utils/as';
+  import { createNode, getAllASes, getCurrentVictim, updatePropRanks } from '$lib/utils/as';
   import type { DataSet, Edge, Node } from 'vis-network/standalone';
   import { toast } from 'svelte-sonner';
-  import { attackerColor, victimColor, type Config } from '$lib/types';
+  import { attackerColor, policies, roles, victimColor, type Config } from '$lib/types';
+  import { createCPEdge, createPeerEdge } from '$lib/utils/link';
 
   export let showModal: boolean;
   export let nodes: DataSet<Node>;
@@ -22,6 +24,18 @@
   let newASProviders = Array<number | null>();
   let newASCustomers = Array<number | null>();
   let newASPeers = Array<number | null>();
+
+  function getAvailableASes(current: number | null = null) {
+    return getAllASes(nodes).filter((asn) => {
+      if (current !== null && asn === current) {
+        return true;
+      }
+
+      return (
+        !newASProviders.includes(asn) && !newASCustomers.includes(asn) && !newASPeers.includes(asn)
+      );
+    });
+  }
 
   function addNode() {
     // Not sure how, but it can sometimes be an empty string...
@@ -52,8 +66,17 @@
       config.asn_policy_map[Number(newASN)] = newASPolicy;
     }
 
+    const currentVictim = getCurrentVictim(config);
+
     if (newASRole === 'victim') {
       newNode.color = victimColor;
+
+      // Remove victim role from previous victim if it exists
+      if (currentVictim !== null) {
+        // @ts-ignore
+        nodes.update({ id: currentVictim, color: null });
+        config.victim_asns = config.victim_asns.filter((victim) => victim !== currentVictim);
+      }
 
       config.victim_asns = [...config.victim_asns, newASN];
     } else if (newASRole === 'attacker') {
@@ -70,20 +93,8 @@
       if (customer === null) {
         continue;
       }
+      edges.add(createCPEdge(Number(newASN), Number(customer)));
 
-      const newEdge = {
-        from: Number(newASN),
-        to: Number(customer),
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      };
-
-      edges.add(newEdge);
-      // cpLinks = [...cpLinks, [Number(newNodeId), Number(customer)]];
       config.graph.cp_links = [...config.graph.cp_links, [Number(newASN), Number(customer)]];
     }
 
@@ -92,20 +103,8 @@
       if (provider === null) {
         continue;
       }
+      edges.add(createCPEdge(Number(provider), Number(newASN)));
 
-      const newEdge = {
-        from: Number(provider),
-        to: Number(newASN),
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      };
-
-      edges.add(newEdge);
-      // cpLinks = [...cpLinks, [Number(provider), Number(newNodeId)]];
       config.graph.cp_links = [...config.graph.cp_links, [Number(provider), Number(newASN)]];
     }
 
@@ -114,16 +113,8 @@
       if (peer === null) {
         continue;
       }
-      const newEdge = {
-        from: Number(newASN),
-        to: Number(peer),
-        dashes: true,
-        width: 2,
-        arrows: 'to, from'
-      };
+      edges.add(createPeerEdge(Number(newASN), Number(peer)));
 
-      edges.add(newEdge);
-      // peerLinks = [...peerLinks, [Number(newNodeId), Number(peer)]];
       config.graph.peer_links = [...config.graph.peer_links, [Number(newASN), Number(peer)]];
     }
 
@@ -182,27 +173,41 @@
 
         <div class="grid grid-cols-5 items-center gap-4">
           <Label class="text-right">Policy</Label>
-          <select
-            bind:value={newASPolicy}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="bgp">BGP</option>
-            <option value="rov">ROV</option>
-            <option value="aspa">ASPA</option>
-            <option value="bgpsec">BGPSec</option>
-            <option value="otc">Only to Customers</option>
-            <option value="path-end">Path-End</option>
-          </select>
+
+          <Select.Root
+            selected={{ value: newASPolicy, label: policies[newASPolicy] }}
+            onSelectedChange={(selected) => {
+              newASPolicy = selected === undefined ? newASPolicy : selected.value;
+            }}>
+            <Select.Trigger class="col-span-4">
+              <Select.Value placeholder="Select a policy" />
+            </Select.Trigger>
+            <Select.Content>
+              {#each Object.entries(policies) as [value, label]}
+                <Select.Item {value}>{label}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </div>
 
         <div class="grid grid-cols-5 items-center gap-4">
           <Label class="text-right">Role</Label>
-          <select
-            bind:value={newASRole}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="none">None</option>
-            <option value="attacker">Attacker</option>
-            <option value="victim">Victim</option>
-          </select>
+
+          <Select.Root
+            selected={{ value: newASRole, label: roles[newASRole] }}
+            onSelectedChange={(selected) => {
+              console.log(selected);
+              newASRole = selected === undefined ? newASRole : selected.value;
+            }}>
+            <Select.Trigger class="col-span-4">
+              <Select.Value placeholder="Select a role" />
+            </Select.Trigger>
+            <Select.Content>
+              {#each Object.entries(roles) as [value, label]}
+                <Select.Item {value}>{label}</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </div>
       </div>
 
@@ -222,14 +227,22 @@
           <div class="space-y-2">
             {#each newASProviders as provider, index}
               <div class="grid grid-cols-4 gap-2">
-                <select
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASProviders[index]}>
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(nodes, newASProviders, index) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
+                <Select.Root
+                  selected={provider !== null
+                    ? { value: provider, label: String(provider) }
+                    : undefined}
+                  onSelectedChange={(selected) => {
+                    newASProviders[index] = selected === undefined ? null : selected.value;
+                  }}>
+                  <Select.Trigger class="col-span-3">
+                    <Select.Value placeholder="Select an AS" />
+                  </Select.Trigger>
+                  <Select.Content>
+                    {#each getAvailableASes(provider) as asn}
+                      <Select.Item value={asn}>{asn}</Select.Item>
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
 
                 <Button
                   size="icon"
@@ -261,14 +274,22 @@
           <div class="space-y-2">
             {#each newASCustomers as customer, index}
               <div class="grid grid-cols-4 gap-2">
-                <select
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASCustomers[index]}>
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(nodes, newASCustomers, index) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
+                <Select.Root
+                  selected={customer !== null
+                    ? { value: customer, label: String(customer) }
+                    : undefined}
+                  onSelectedChange={(selected) => {
+                    newASCustomers[index] = selected === undefined ? null : selected.value;
+                  }}>
+                  <Select.Trigger class="col-span-3">
+                    <Select.Value placeholder="Select an AS" />
+                  </Select.Trigger>
+                  <Select.Content>
+                    {#each getAvailableASes(customer) as asn}
+                      <Select.Item value={asn}>{asn}</Select.Item>
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
 
                 <Button
                   size="icon"
@@ -300,14 +321,20 @@
           <div class="space-y-2">
             {#each newASPeers as peer, index}
               <div class="grid grid-cols-4 gap-2">
-                <select
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASPeers[index]}>
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(nodes, newASPeers, index) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
+                <Select.Root
+                  selected={peer !== null ? { value: peer, label: String(peer) } : undefined}
+                  onSelectedChange={(selected) => {
+                    newASPeers[index] = selected === undefined ? null : selected.value;
+                  }}>
+                  <Select.Trigger class="col-span-3">
+                    <Select.Value placeholder="Select an AS" />
+                  </Select.Trigger>
+                  <Select.Content>
+                    {#each getAvailableASes(peer) as asn}
+                      <Select.Item value={asn}>{asn}</Select.Item>
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
 
                 <Button
                   size="icon"

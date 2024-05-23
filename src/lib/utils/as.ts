@@ -204,6 +204,18 @@ export function removeAS(asn: number, nodes: DataSet<Node>, edges: DataSet<Edge>
   // Remove the node
   nodes.remove(asn);
 
+  // Remove from role arrays
+  if (config.victim_asns.includes(asn)) {
+    config.victim_asns = config.victim_asns.filter((victim) => victim !== asn);
+  } else if (config.attacker_asns.includes(asn)) {
+    config.attacker_asns = config.attacker_asns.filter((attacker) => attacker !== asn);
+  }
+
+  // Remove from policy map
+  if (asn in config.asn_policy_map) {
+    delete config.asn_policy_map[asn];
+  }
+
   // Remove node from level map
   if (config.graph.node_level_map) {
     delete config.graph.node_level_map[asn];
