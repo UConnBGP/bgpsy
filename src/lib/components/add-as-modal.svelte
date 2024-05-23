@@ -211,7 +211,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-2 mt-4">
+      <div class="grid sm:grid-cols-3 sm:grid-rows-none grid-rows-3 grid-cols-none gap-2 mt-4">
         <!-- Providers Column -->
         <div class="border p-4 rounded-lg">
           <div class="flex justify-between items-center mb-4">
