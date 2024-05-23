@@ -35,11 +35,6 @@
   export let config: Config;
   export let centerGraph: () => void;
 
-  let initialASProviders: Array<number | null>;
-  let availableProviders = Array<number>();
-
-  // $: selectedASN, (initialASProviders = [...selectedASProviders]);
-
   function updateASPolicy() {
     if (selectedASPolicy === null || selectedASN === null) {
       return;
@@ -402,6 +397,10 @@
 
     <Card.Content>
       <div class="grid gap-4">
+        <!-- There is no option to rename the AS here because renaming a node may move its position 
+          on the graph. Because this disrupts the positioning of nodes on the graph in an 
+          unintended way, I decided not to include it here. -->
+
         <div class="grid grid-cols-5 items-center gap-4">
           <Label class="text-right">Policy</Label>
 

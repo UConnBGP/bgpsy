@@ -125,6 +125,65 @@ export function removeASRole(asn: number, config: Config) {
   }
 }
 
+export function changeASN(
+  oldASN: number,
+  newASN: number,
+  nodes: DataSet<Node>,
+  edges: DataSet<Edge>,
+  config: Config
+) {
+  // Update the node's ID and label
+  const nodeToUpdate = nodes.get(oldASN);
+  if (nodeToUpdate === null) {
+    return;
+  }
+
+  nodes.remove(nodeToUpdate);
+  nodes.add({ ...nodeToUpdate, id: Number(newASN), label: String(newASN) });
+
+  // Update all edges connected to this node
+  edges.forEach((edge) => {
+    if (edge.from === oldASN) {
+      edges.update({ ...edge, from: newASN });
+    }
+    if (edge.to === oldASN) {
+      edges.update({ ...edge, to: newASN });
+    }
+  });
+
+  // Update role arrays
+  if (config.victim_asns.includes(oldASN)) {
+    config.victim_asns = config.victim_asns.map((asn) => (asn === oldASN ? newASN : asn));
+  } else if (config.attacker_asns.includes(oldASN)) {
+    config.attacker_asns = config.attacker_asns.map((asn) => (asn === oldASN ? newASN : asn));
+  }
+
+  // Update policy map
+  if (oldASN in config.asn_policy_map) {
+    const policy = config.asn_policy_map[oldASN];
+    delete config.asn_policy_map[oldASN];
+    config.asn_policy_map[newASN] = policy;
+  }
+
+  // Update cpLinks and peerLinks if necessary
+  config.graph.cp_links = config.graph.cp_links.map((link) =>
+    link.map((id) => (id === oldASN ? newASN : id))
+  );
+  config.graph.peer_links = config.graph.peer_links.map((link) =>
+    link.map((id) => (id === oldASN ? newASN : id))
+  );
+
+  // Update level map
+  if (config.graph.node_level_map && oldASN in config.graph.node_level_map) {
+    const level = config.graph.node_level_map[oldASN];
+    delete config.graph.node_level_map[oldASN];
+    config.graph.node_level_map[newASN] = level;
+  }
+
+  // Adjust height of graph
+  updatePropRanks(nodes, config);
+}
+
 export function removeAS(asn: number, nodes: DataSet<Node>, edges: DataSet<Edge>, config: Config) {
   // Get all connected edges to the node
   const connectedEdges = edges.get({

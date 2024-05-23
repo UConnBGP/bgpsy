@@ -6,7 +6,7 @@
   import type { DataSet, Edge, Node } from 'vis-network/standalone';
   import type { Config } from '$lib/types';
   import { toast } from 'svelte-sonner';
-  import { updatePropRanks } from '$lib/utils/as';
+  import { changeASN } from '$lib/utils/as';
 
   // Props
   export let showModal: boolean;
@@ -32,40 +32,18 @@
     newNum = Number(newNum);
 
     // Number already used
-    if (nodes.get({ filter: (node) => node.id === newNum }).length > 0) {
+    if (nodes.get(newNum)) {
       toast.error(`AS ${newNum} already exists`);
       return;
     }
 
-    // Update the node's ID and label
-    const nodeToUpdate = nodes.get(oldNum);
-    if (!nodeToUpdate) {
+    // Negative number
+    if (newNum < 0) {
+      toast.error('AS Number cannot be negative');
       return;
     }
 
-    nodes.remove(nodeToUpdate);
-    nodes.add({ ...nodeToUpdate, id: Number(newNum), label: String(newNum) });
-
-    // Update all edges connected to this node
-    edges.forEach((edge) => {
-      if (edge.from === oldNum) {
-        edges.update({ ...edge, from: newNum });
-      }
-      if (edge.to === oldNum) {
-        edges.update({ ...edge, to: newNum });
-      }
-    });
-
-    // Update cpLinks and peerLinks if necessary
-    config.graph.cp_links = config.graph.cp_links.map((link) =>
-      link.map((id) => (id === oldNum ? newNum : id))
-    );
-    config.graph.peer_links = config.graph.peer_links.map((link) =>
-      link.map((id) => (id === oldNum ? newNum : id))
-    );
-
-    // Adjust height of graph
-    updatePropRanks(nodes, config);
+    changeASN(oldNum, newNum, nodes, edges, config);
 
     // Dismiss modal
     showModal = false;
