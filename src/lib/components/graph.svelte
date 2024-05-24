@@ -218,21 +218,6 @@
   // Reference to hidden canvas element
   let canvas: HTMLCanvasElement | undefined;
 
-  // TODO: Remove old code
-  let selectedASN2: any | null = null;
-  let selectedLinkID2: string | null = null;
-  let nodeData: {} | null = null;
-  let edgeData: {} | null = null;
-  let contextMenuData = { show: false, x: 0, y: 0 };
-  let victimASN: any | null = null;
-  let newLinkType: string | null = null;
-  let addingLink = false;
-  let selectedASRelationships = {
-    customers: Array<number | null>(),
-    providers: Array<number | null>(),
-    peers: Array<number | null>()
-  };
-
   // Used for vis-network's `on('click')` event handler signature
   // https://visjs.github.io/vis-network/docs/network/#Events
   type VisNetworkOnClickParams = {
@@ -266,58 +251,20 @@
       }
 
       showContextMenu = false;
-
-      // TODO: Remove old code
-      contextMenuData.show = false;
     });
 
     network.on('deselectNode', () => {
       deselectAS();
       showContextMenu = false;
-
-      // TODO: Remove old code
-      contextMenuData.show = false;
     });
 
     network.on('deselectEdge', () => {
       deselectLink();
       showContextMenu = false;
-
-      // TODO: Remove old code
-      contextMenuData.show = false;
     });
 
     // Right click
     network.on('oncontext', function (params) {
-      // params.event.preventDefault();
-
-      // TODO: Remove old context menu code
-      // let show = false;
-      // if (nodeData !== null) {
-      //   selectedASN2 = nodeData.id;
-      //   selectedLinkID2 = null;
-      //   show = true;
-      //   params.event.preventDefault();
-      //   nodeData = null;
-      // } else if (edgeData !== null) {
-      //   // selectedLinkID = edgeData.id;
-      //   selectedLinkID2 = edgeData.id;
-      //   selectedASN2 = null;
-      //   show = true;
-      //   params.event.preventDefault();
-      // } else {
-      //   selectedASN2 = null;
-      //   selectedLinkID2 = null;
-      //   show = true;
-      //   params.event.preventDefault();
-      // }
-      // contextMenuData = {
-      //   show: show,
-      //   x: params.event.pageX,
-      //   y: params.event.pageY
-      // };
-
-      // New code
       params.event.preventDefault();
       contextMenuX = params.event.pageX;
       contextMenuY = params.event.pageY;
@@ -336,36 +283,17 @@
       showContextMenu = true;
     });
 
-    // Show Local RIB on hover
+    // Keep track of node being hovered over for context menu
     network.on('hoverNode', (params) => {
       if (drawingCPLink || drawingPeerLink) {
         return;
       }
 
       hoveredASN = params.node;
-
-      // TODO: Remove old code
-      // if (addingLink) {
-      //   return;
-      // }
-
-      // const node = nodes.get(params.node);
-      // if (node === null) {
-      //   return;
-      // }
-      // nodeData = {
-      //   id: node.id,
-      //   policy: node.policy || 'BGP',
-      //   x: params.event.pageX,
-      //   y: params.event.pageY
-      // };
     });
 
     network.on('blurNode', (params) => {
       hoveredASN = null;
-
-      // TODO: Remove old code
-      nodeData = null;
     });
 
     network.on('hoverEdge', (params) => {
@@ -375,31 +303,11 @@
 
       const link = edges.get(params.edge);
       hoveredLink = link;
-
-      // TODO: Remove old code
-      // edgeData = {
-      //   id: link.id,
-      //   x: params.event.pageX,
-      //   y: params.event.pageY
-      // };
     });
 
     network.on('blurEdge', (params) => {
       hoveredLink = null;
-
-      // TODO: Remove old code
-      edgeData = null;
     });
-
-    // TODO: Remove old code
-    // TODO: MOVE SOMEWHRE ELSE
-    // Find victim when first initialized
-    // const victims = Object.entries(roleMap)
-    //   .filter(([_, value]) => value === 'victim')
-    //   .map(([key, _]) => key);
-    // if (victims.length > 0) {
-    //   victimASN = Number(victims[0]);
-    // }
   });
 
   onDestroy(() => {
@@ -569,16 +477,9 @@
     if (!drawingCPLink) {
       network?.addEdgeMode();
       drawingCPLink = true;
-
-      // TODO: Remove old code
-      // newLinkType = 'customer-provider';
-      // addingLink = true;
     } else {
       network?.disableEditMode();
       drawingCPLink = false;
-
-      // TODO: Remove old code
-      // addingLink = false;
     }
 
     drawingPeerLink = false;
@@ -588,16 +489,9 @@
     if (!drawingPeerLink) {
       network?.addEdgeMode();
       drawingPeerLink = true;
-
-      // TODO: Remove old code
-      // newLinkType = 'peer';
-      // addingLink = true;
     } else {
       network?.disableEditMode();
       drawingPeerLink = false;
-
-      // TODO: Remove old code
-      // addingLink = false;
     }
 
     drawingCPLink = false;
