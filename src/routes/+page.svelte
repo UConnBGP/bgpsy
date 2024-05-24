@@ -44,8 +44,8 @@
 
   // TODO: Add types
   // Drag functionality
-  let firstColumn: any;
-  let mainColumn: any;
+  let firstColumn: HTMLDivElement;
+  let mainColumn: HTMLElement;
   let startX: any;
   let startWidth: any;
   let containerWidth: any;
@@ -389,11 +389,11 @@
     const newWidth = startWidth + e.clientX - startX;
 
     // Stop after 25% and 50% width
-    if (newWidth < containerWidth / 4) {
-      return;
-    } else if (newWidth > containerWidth / 2) {
-      return;
-    }
+    // if (newWidth < containerWidth / 4) {
+    //   return;
+    // } else if (newWidth > containerWidth / 2) {
+    //   return;
+    // }
 
     // firstColumn.style.width = newWidth + 'px';
     firstColumn.style.setProperty('--sidebar-width', newWidth + 'px');
@@ -411,7 +411,7 @@
   <title>BGPy</title>
 </svelte:head>
 
-<main bind:this={mainColumn} class={cn('w-full mx-auto pb-4', dragging ? 'select-none' : '')}>
+<main bind:this={mainColumn} class={`w-full mx-auto pb-4 ${dragging ? 'select-none' : ''}`}>
   <div class="">
     <div class="flex flex-wrap justify-between items-center px-6 py-3">
       <div class="flex justify-start w-full sm:w-auto order-3 sm:order-1">
@@ -479,12 +479,13 @@
   </div>
 
   <!-- Two columns for form and graph -->
-  <!-- <div class="grid md:grid-flow-col md:grid-rows-none grid-rows grid-cols-none"> -->
   <div class={`flex flex-col md:flex-row`}>
     <div
       bind:this={firstColumn}
       id="sidebar"
-      class={`order-2 md:order-1 px-6 py-3 bg-slate-50 ${showSidebar ? '' : 'md:hidden'}`}>
+      class={`order-2 md:order-1 px-6 py-3 bg-slate-50 md:min-w-[25vw] md:max-w-[50vw] flex-grow overflow-x-scroll ${
+        showSidebar ? '' : 'md:hidden'
+      }`}>
       <ConfigForm
         bind:config
         {nodes}
@@ -503,7 +504,7 @@
       on:mousedown={startDrag}>
     </div>
 
-    <div class={`order-1 md:order-2 px-6 py-3 ${showSidebar ? 'basis-3/4' : 'basis-full'}`}>
+    <div class="order-1 md:order-3 px-6 py-3 flex-grow overflow-x-scroll">
       <Graph {nodes} {edges} bind:config bind:simResults bind:imageURL bind:graphLoadingState />
     </div>
   </div>
@@ -527,12 +528,12 @@
 
 <style>
   #sidebar {
-    width: var(--sidebar-width, 33%);
+    flex-basis: var(--sidebar-width, 33%);
   }
 
   @media (max-width: 768px) {
     #sidebar {
-      width: 100%;
+      flex-basis: 100%;
     }
   }
 </style>
