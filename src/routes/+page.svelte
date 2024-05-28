@@ -1,60 +1,64 @@
 <script lang="ts">
-  import { DataSet } from 'vis-network/standalone/esm/vis-network';
+  import { DataSet, type Color, type Edge, type Node } from 'vis-network/standalone';
   import ConfigForm from '$lib/components/config-form.svelte';
-  import Graph from '../lib/components/graph.svelte';
-  import { type Config, exampleConfigsMap, exampleConfigsMap2 } from '$lib';
-  import { exampleConfigs, getPropagationRanks, listToIndexJsonReversed } from '$lib';
+  import { type Config, exampleConfigsMap, type SimResults } from '$lib';
+  import {
+    attackerColor,
+    attackerSuccessColor,
+    disconnectedColor,
+    victimColor,
+    victimSuccessColor
+  } from '$lib/types';
+  import { exampleConfigs, getPropagationRanks } from '$lib';
   import CitationModal from '$lib/components/citation-modal.svelte';
-  import ErrorBanner from '$lib/components/error-banner.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import ChevronDown from 'lucide-svelte/icons/chevron-down';
-  import Download from 'lucide-svelte/icons/download';
-  import Loader2 from 'lucide-svelte/icons/loader-2';
-  import Upload from 'lucide-svelte/icons/upload';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Accordion from '$lib/components/ui/accordion';
-  import { getROAStates2 } from '$lib/utils';
+  import { cn, createConfig, getROAStates } from '$lib/utils';
   import Bug from 'lucide-svelte/icons/bug';
+  import { toast } from 'svelte-sonner';
+  import Graph from '$lib/components/graph.svelte';
+  import { Sidebar } from 'lucide-svelte';
+  import { createCPEdge, createPeerEdge } from '$lib/utils/link';
+
+  // Data
+  let nodes = new DataSet<Node>([]);
+  let edges = new DataSet<Edge>([]);
+  let config = createConfig();
 
   // State
-  let nodes = new DataSet([]);
-  let edges = new DataSet([]);
-  let config: Config = {
-    name: '',
-    desc: '',
-    scenario: null,
-    announcements: [],
-    roas: []
-    // propagation_rounds: 1
-  };
-  let policyMap: Record<number, string> = {};
-
+  let showSidebar = true;
+  let showCitation = false;
+  let showBanner = false;
   let imageURL = '';
   let prevConfig: Config | null = null;
-  let fileInput: HTMLInputElement; // Reference to the hidden file input
-  let submitPressed;
-  let isImageOpen = false;
-  let isDropdownOpen = false;
-  let simulationResults: {} | null = null;
-  let cpLinks: number[][] = [];
-  let peerLinks: number[][] = [];
-  let showInfo = false;
-  let showBanner = false;
+  let simResults: SimResults | null = null;
   let errorMessage = '';
   let isLoading: boolean = false;
-  let showAddASModal = false;
-  let showClearGraphModal = false;
-  let graphComponent: Graph;
-  let annROAStates: string[];
+  let annROAStates = Array<string>();
+  let graphLoadingState = ''; // TODO: Replace with something else
+  let fileInput: HTMLInputElement; // Reference to the hidden file input
 
+  // TODO: Add types
+  // Drag functionality
+  let firstColumn: HTMLDivElement;
+  let mainColumn: HTMLElement;
+  let startX: any;
+  let startWidth: any;
+  let containerWidth: any;
+  let dragging = false;
+
+  // Load subprefix hijack with custom anns by default
   onMount(async () => {
-    if (!exampleConfigsMap2[$page.url.hash]) {
+    if (!exampleConfigsMap[$page.url.hash]) {
       loadExampleConfig(exampleConfigs['Subprefix Hijack with Custom Announcements']);
     }
   });
 
+  // Load config from URL using `?link=` query parameter
   $: if ($page.url.searchParams.has('link')) {
     const link = $page.url.searchParams.get('link');
     if (link) {
@@ -62,34 +66,18 @@
     }
   }
 
-  // Handle jump link
-  $: if (exampleConfigsMap2[$page.url.hash]) {
-    // console.log($page.url.hash);
-    loadExampleConfig(exampleConfigs[exampleConfigsMap2[$page.url.hash]]);
+  // Load corresponding example from jump link
+  $: if (exampleConfigsMap[$page.url.hash]) {
+    loadExampleConfig(exampleConfigs[exampleConfigsMap[$page.url.hash]]);
   }
 
-  async function fetchConfig(url: string) {
-    try {
-      const response = await fetch(url);
-      console.log(url);
-      if (!response.ok) {
-        showBanner = true;
-        errorMessage = 'Network response was not ok';
-        console.log(response.status);
-        return;
-      }
-      config = await response.json();
-      generateGraph(config);
-    } catch (err) {
-      showBanner = true;
-      errorMessage = 'Failed to download JSON from link';
-    }
-
-    // Reset simulation results
-    simulationResults = null;
+  // TODO: Change this logic
+  // Display error toast if errorMessage is changed
+  $: if (showBanner && errorMessage !== '') {
+    toast.error(errorMessage);
   }
 
-  function loadConfig(event: Event) {
+  async function loadConfig(event: Event) {
     // Stupid type safety check for TypeScript
     if (
       !(event.target instanceof HTMLInputElement) ||
@@ -102,32 +90,87 @@
     // Read file as JSON and store it in config
     const file = event.target.files[0];
     const reader = new FileReader();
-    reader.onload = (e: ProgressEvent<FileReader>) => {
+    reader.onload = async (e: ProgressEvent<FileReader>) => {
       // Another type check
       if (e.target === null || typeof e.target.result !== 'string') {
         return;
       }
 
       config = JSON.parse(e.target.result);
+
+      // Fill in any undefined fields
+      config = {
+        ...createConfig(),
+        ...config
+      };
+      // console.log(config);
+
       generateGraph(config);
+
+      // Send message to graph
+      graphLoadingState = 'file';
+
+      // Update ROA validity
+      // console.log(config.announcements, config.roas);
+      // annROAStates = await fetchROAStates(config.announcements, config.roas);
+      annROAStates = await getROAStates(config);
+      // console.log('fetching roa validity');
     };
     reader.readAsText(file);
 
     // Reset fileInput so that we can load same file if needed
     fileInput.value = '';
-
     // Reset simulation results
-    simulationResults = null;
+    simResults = null;
   }
 
   async function loadExampleConfig(example: Config) {
+    // Clone example so that same example can be reloaded
     config = structuredClone(example);
+
+    // Load graph from config
     generateGraph(config);
-    simulationResults = null;
-    isDropdownOpen = false;
+
+    // Reset sim results
+    simResults = null;
+    graphLoadingState = 'example';
+
+    // Make sure sidebar is open
+    // showSidebar = true;
 
     // Update ROA validity
-    annROAStates = await getROAStates2(config.announcements, config.roas);
+    // annROAStates = await fetchROAStates(config.announcements, config.roas);
+    annROAStates = await getROAStates(config);
+  }
+
+  // Load config from query parameter
+  async function fetchConfig(url: string) {
+    try {
+      const response = await fetch(url);
+      // console.log(url);
+      if (!response.ok) {
+        showBanner = true;
+        errorMessage = 'Network response was not ok';
+        // console.log(response.status);
+        return;
+      }
+      config = await response.json();
+
+      // Fill in any undefined fields
+      config = {
+        ...createConfig(),
+        ...config
+      };
+      // console.log(config);
+
+      generateGraph(config);
+    } catch (err) {
+      showBanner = true;
+      errorMessage = 'Failed to fetch JSON from link';
+    }
+
+    // Reset simulation results
+    simResults = null;
   }
 
   function generateGraph(data: Config) {
@@ -135,267 +178,164 @@
     nodes.clear();
     edges.clear();
 
-    if (data.announcements === undefined) {
-      data.announcements = [];
-    }
-
-    if (data.roas === undefined) {
-      data.roas = [];
-    }
-
-    if (data.attacker_asns === undefined) {
-      data.attacker_asns = [];
-    }
-
-    if (data.victim_asns === undefined) {
-      data.victim_asns = [];
-    }
-
     if (data.graph === undefined) {
-      // network.setData;
       return;
     }
 
-    if (data.scenario === undefined) {
-      data.scenario = null;
-    }
-
-    let levels: {};
-    // console.log(data.graph.propagation_ranks);
-    if (data.graph?.propagation_ranks) {
-      // Reverse and turn it into a map
-      levels = listToIndexJsonReversed(data.graph.propagation_ranks);
-      console.log('listToIndexJSON', levels);
-    } else {
-      levels = getPropagationRanks(data.graph);
-    }
-
-    policyMap = data.asn_policy_map || {};
-
-    // console.log(policyMap);
-
-    // Update links after loading from file
-    cpLinks = [];
-    data.graph.cp_links.forEach((arr) => {
-      cpLinks = [...cpLinks, [arr[0], arr[1]]];
-    });
-    peerLinks = [];
-    data.graph.peer_links.forEach((arr) => {
-      peerLinks = [...peerLinks, [arr[0], arr[1]]];
-    });
-    // console.log('load from file', cpLinks, peerLinks);
-
-    // Generate nodes
+    // Get all nodes
     const allAsns = new Set([
       ...data.attacker_asns,
       ...data.victim_asns,
       ...data.graph.peer_links.flat(),
       ...data.graph.cp_links.flat()
     ]);
+    const levels: Record<number, number> = getPropagationRanks(data.graph);
+
     allAsns.forEach((asn) => {
-      let node = {
+      let node: Node = {
         id: asn,
         label: String(asn),
-        level: levels[asn] || 1 // Default level to 1 if not calculated,
-        // policy: asn in policyMap && policyMap[asn] // If it exists
-        // color: data.attacker_asns.includes(asn)
-        //   ? 'red'
-        //   : data.victim_asns.includes(asn)
-        //     ? 'green'
-        //     : 'blue'
+        level: levels[asn] || 1 // Default level to 1 if not calculated
       };
-      if (asn in policyMap) {
-        node.policy = policyMap[asn].toLowerCase();
-        //   if (
-        //     node.policy === 'rov' ||
-        //     node.policy === 'aspa' ||
-        //     node.policy === 'bgpsec' ||
-        //     node.policy === 'otc' ||
-        //     node.policy === 'pathend'
-        //   ) {
-        //     node.shape = 'hexagon';
-        //   }
-      }
+
       if (data.victim_asns?.includes(asn)) {
-        node.role = 'victim';
-        const colorProp = { border: '#047857', background: '#34d399' };
-        node.color = { ...colorProp, highlight: colorProp, hover: colorProp };
+        node.color = victimColor;
       } else if (data.attacker_asns?.includes(asn)) {
-        node.role = 'attacker';
-        const colorProp = { border: '#b91c1c', background: '#f87171' };
-        node.color = { ...colorProp, highlight: colorProp, hover: colorProp };
+        node.color = attackerColor;
       }
+
       nodes.add(node);
     });
 
-    // Generate peer and cp_links as edges
-    data.graph.peer_links.forEach((link) => {
-      edges.add({
-        from: link[0],
-        to: link[1],
-        dashes: true,
-        width: 2,
-        arrows: 'to, from'
-      });
-    });
+    // Convert peer and cp links to vis-network edges
     data.graph.cp_links.forEach((link) => {
-      edges.add({
-        from: link[0],
-        to: link[1],
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      });
+      edges.add(createCPEdge(link[0], link[1]));
+    });
+    data.graph.peer_links.forEach((link) => {
+      edges.add(createPeerEdge(link[0], link[1]));
     });
   }
 
-  function addGraphToConfig() {
-    // Generate graph, victim ASNs, attacker ASNs, and ASN policy map for the config from the nodes and edges data sets
-
-    const attackerASNs = [];
-    const victimASNs = [];
-    const asnPolicyMap = {};
-
-    // Process nodes to fill attacker/victim ASNs and ASN policies
-    nodes.forEach((node) => {
-      if (node.role === 'attacker') {
-        attackerASNs.push(node.id);
-      } else if (node.role === 'victim') {
-        victimASNs.push(node.id);
-      }
-
-      if (
-        node.policy === 'bgp' ||
-        node.policy == 'rov' ||
-        node.policy == 'aspa' ||
-        node.policy == 'bgpsec' ||
-        node.policy == 'pathend' ||
-        node.policy == 'otc'
-      ) {
-        asnPolicyMap[node.id] = node.policy;
-      }
-    });
-
-    let propagationRounds = 1;
-    if (config.scenario === 'AccidentalRouteLeak') {
-      propagationRounds = 2;
+  function fillInRanks(data: Config): Config {
+    // Generate rest of ranks before submitting, if any custom levels are specified
+    let node_level_map: Record<number, number> | undefined = undefined;
+    if (data.graph.node_level_map && Object.keys(data.graph.node_level_map).length > 0) {
+      node_level_map = getPropagationRanks(data.graph);
     }
 
-    config = {
-      ...config,
-      attacker_asns: attackerASNs,
-      victim_asns: victimASNs,
-      asn_policy_map: asnPolicyMap,
-      propagation_rounds: propagationRounds,
+    return {
+      ...data,
       graph: {
-        ...config.graph,
-        cp_links: cpLinks,
-        peer_links: peerLinks
+        ...data.graph,
+        node_level_map: node_level_map
       }
     };
   }
 
-  async function handleSubmit() {
-    // if (!submitPressed) {
-    //   imageURL = null;
-    //   return Promise.resolve();
-    // }
+  async function handleSimulate() {
     showBanner = false; // Reset error state on each submission
     isLoading = true;
-    addGraphToConfig();
-    // console.log(cpLinks, peerLinks);
-    // console.log(config.graph?.cp_links, config.graph?.peer_links);
+
     try {
-      const responseJSON = await fetch('/api/simulate', {
+      const simResponse = await fetch('/api/simulate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(fillInRanks(config))
       });
-      const response = await fetch('/api/simulate?include_diagram=true', {
+      const imgResponse = await fetch('/api/simulate?include_diagram=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(config)
+        body: JSON.stringify(fillInRanks(config))
       });
-      if (!response.ok) {
+
+      if (!imgResponse.ok) {
         showBanner = true;
         // Get error message
-        const error = await response.json();
-        if (response.status === 429) {
+        const error = await imgResponse.json();
+        if (imgResponse.status === 429) {
           errorMessage = error.error;
         } else if (error) {
-          errorMessage = error.detail[0].msg;
-          if (errorMessage.includes('Value error, ')) {
-            errorMessage = errorMessage.replace('Value error, ', '');
+          const msg = error.detail[0].msg;
+          if (msg === '') {
+            errorMessage = 'Internal server error';
+          } else if (msg.includes('Value error, ')) {
+            errorMessage = msg.replace('Value error, ', '');
+          } else {
+            errorMessage = msg;
           }
+          console.log(error);
         } else {
           errorMessage = 'Failed to run simulation';
         }
 
         isLoading = false;
+        imageURL = '';
         return;
       }
 
-      let blob = await response.blob();
+      const blob = await imgResponse.blob();
+      simResults = await simResponse.json();
+      if (!simResults) {
+        showBanner = true;
+        errorMessage = 'Failed to run simulation';
+        isLoading = false;
+        imageURL = '';
+        return;
+      }
 
-      simulationResults = await responseJSON.json();
-      // console.log(simulationResults);
-      const outcome = simulationResults.outcome;
-      const local_ribs = simulationResults.local_ribs;
-      // console.log(outcome);
-
+      const outcome = simResults.outcome;
       prevConfig = config; // Save for downloading zip
       imageURL = URL.createObjectURL(blob);
 
-      nodes.forEach((node) => {
-        let color: {} = node.color;
-        if (config.attacker_asns?.includes(node.id)) {
-          color = { border: '#b91c1c', background: '#f87171' };
-        } else if (config.victim_asns?.includes(node.id)) {
-          color = { border: '#047857', background: '#34d399' };
+      nodes.forEach((node: Node) => {
+        let color = node.color as Color;
+        let asn = Number(node.id);
+        if (config.attacker_asns?.includes(asn)) {
+          color = attackerColor;
+        } else if (config.victim_asns?.includes(asn)) {
+          color = victimColor;
         }
 
-        if (outcome[node.id] === 0 && !config.attacker_asns?.includes(node.id)) {
+        if (outcome[asn] === 0 && !config.attacker_asns?.includes(asn)) {
           // Attacker success
-          color = { border: '#ea580c', background: '#f59e0b' };
-        } else if (outcome[node.id] === 1 && !config.victim_asns?.includes(node.id)) {
+          color = attackerSuccessColor;
+        } else if (outcome[asn] === 1 && !config.victim_asns?.includes(asn)) {
           // Victim success
-          color = { border: '#16a34a', background: '#86efac' };
-        } else if (outcome[node.id] === 2) {
+          color = victimSuccessColor;
+        } else if (outcome[asn] === 2) {
           // Disconnected
-          color = { border: '#737373', background: '#d4d4d4' };
+          color = disconnectedColor;
         }
-        // console.log(outcome[node.id]);
-        // nodes.update({ ...node, color: color });
-        nodes.update({ ...node, color: { ...color, highlight: color, hover: color } });
+
+        nodes.update({ ...node, color: color });
       });
     } catch (error) {
       showBanner = true;
-      errorMessage = 'Failed to connect to the server';
+      errorMessage = 'Internal server error';
+      imageURL = '';
       // console.error('Error running submission:', error);
     }
 
     isLoading = false;
   }
 
-  function onFileButtonClicked() {
-    fileInput.click(); // Trigger click on the actual file input
-  }
-
   async function downloadZip() {
     try {
+      if (prevConfig === null) {
+        console.log('error: prevConfig is null');
+        return;
+      }
+
       const response = await fetch('/api/simulate?download_zip=true', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(prevConfig) // Use previous since that's we submitted
+        body: JSON.stringify(fillInRanks(prevConfig)) // Use previous since that's we submitted
       });
       let blob = await response.blob();
       let url = URL.createObjectURL(blob);
@@ -416,8 +356,9 @@
   }
 
   function downloadConfig() {
-    addGraphToConfig();
-    const configJson = JSON.stringify(config, null, 2); // Convert config object to JSON string
+    // addGraphToConfig();
+
+    const configJson = JSON.stringify(config, null, 2);
     const blob = new Blob([configJson], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
 
@@ -432,93 +373,84 @@
     URL.revokeObjectURL(url);
     a.remove();
   }
+
+  // TODO: Add types
+  function startDrag(e: any) {
+    startX = e.clientX;
+    startWidth = firstColumn.offsetWidth;
+    containerWidth = mainColumn.offsetWidth;
+    dragging = true;
+    document.addEventListener('mousemove', doDrag, false);
+    document.addEventListener('mouseup', stopDrag, false);
+  }
+
+  // TODO: Add types
+  function doDrag(e: any) {
+    const newWidth = startWidth + e.clientX - startX;
+
+    // Stop after 25% and 50% width
+    // if (newWidth < containerWidth / 4) {
+    //   return;
+    // } else if (newWidth > containerWidth / 2) {
+    //   return;
+    // }
+
+    // firstColumn.style.width = newWidth + 'px';
+    firstColumn.style.setProperty('--sidebar-width', newWidth + 'px');
+  }
+
+  // TODO: Add types
+  function stopDrag(e: any) {
+    document.removeEventListener('mousemove', doDrag, false);
+    document.removeEventListener('mouseup', stopDrag, false);
+    dragging = false;
+  }
 </script>
 
 <svelte:head>
   <title>BGPy</title>
 </svelte:head>
 
-<main class="container px-4 py-4">
-  <h1 class="text-4xl font-semibold mb-4">
-    <a href="https://github.com/jfuruness/bgpy_pkg/wiki" target="_blank">BGPy</a>
-  </h1>
-
-  <!-- Banner for errors -->
-  <ErrorBanner message={errorMessage} bind:open={showBanner} />
-
-  <!-- Two columns for form and graph -->
-  <div class="flex md:flex-row flex-col space-x-4">
-    <div class="basis-1/2 order-2 md:order-1">
-      <!-- Examples dropdown -->
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild let:builder>
-          <Button builders={[builder]} class="mb-4 bg-indigo-500 hover:bg-indigo-500/90" size="sm">
-            Examples
-            <ChevronDown class="ml-2 size-4" />
-          </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content>
-          {#each Object.keys(exampleConfigs) as configName}
-            <DropdownMenu.Item
-              href={'#' + exampleConfigsMap[configName]}
-              on:click={() => {
-                // loadExampleConfig(exampleConfigs[configName])
-              }}>
-              {configName}
-            </DropdownMenu.Item>
-          {/each}
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-
-      <ConfigForm bind:annROAStates {config} {handleSubmit} />
-
-      <div class="mt-4 flex space-x-2 items-center">
-        <!-- Submit button -->
+<main bind:this={mainColumn} class={`w-full mx-auto pb-4 ${dragging ? 'select-none' : ''}`}>
+  <div class="">
+    <div class="flex flex-wrap justify-between items-center px-6 py-3">
+      <div class="flex justify-start w-full sm:w-auto order-3 sm:order-1">
+        <!-- Show/hide sidebar -->
         <Button
+          variant="outline"
+          size="sm"
+          class="hidden md:inline mr-2"
           on:click={() => {
-            submitPressed = true;
-            handleSubmit();
-            submitPressed = false;
-          }}
-          class="bg-sky-500 hover:bg-sky-500/90">
-          {#if isLoading}
-            <Loader2 class="mr-2 size-4 animate-spin" />
-          {/if}
-          Simulate
+            showSidebar = !showSidebar;
+            graphLoadingState = `toggle-sidebar-${showSidebar ? 'on' : 'off'}`;
+          }}>
+          <Sidebar class="size-4" />
         </Button>
 
-        <input
-          bind:this={fileInput}
-          on:change={loadConfig}
-          type="file"
-          accept="application/json"
-          class="hidden" />
-        <!-- Load config button -->
-        <Button class="bg-sky-500 hover:bg-sky-500/90" on:click={onFileButtonClicked}>
-          <Upload class="mr-2 size-4" />
-          Load Config
-        </Button>
-
-        <!-- Download config button -->
-        <Button type="submit" class="bg-sky-500 hover:bg-sky-500/90" on:click={downloadConfig}>
-          <Download class="mr-2 size-4" />
-          Download Config
-        </Button>
-
-        <!-- Download zip button -->
-        <Button
-          on:click={downloadZip}
-          class="bg-sky-500 hover:bg-sky-500/90"
-          disabled={imageURL === ''}>
-          <Download class="mr-2 size-4" />
-          Download Results Zip
-        </Button>
+        <!-- Examples dropdown -->
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <Button variant="outline" size="sm">
+              Examples
+              <ChevronDown class="ml-2 size-4" />
+            </Button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content>
+            {#each Object.keys(exampleConfigsMap) as configName}
+              <DropdownMenu.Item href={configName}>
+                {exampleConfigsMap[configName]}
+              </DropdownMenu.Item>
+            {/each}
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
       </div>
-    </div>
 
-    <div class="basis-1/2 order-1 md:order-2">
+      <div class="flex justify-center sm:order-2">
+        <h1 class="sm:text-3xl font-semibold">BGPy Editor</h1>
+      </div>
+
       <!-- Link and citation buttons -->
-      <div class="flex flex-row float-right">
+      <div class="flex justify-end sm:order-3">
         <a
           href="https://github.com/jfuruness/bgpy_pkg/wiki"
           target="_blank"
@@ -529,35 +461,59 @@
           </svg>
         </a>
         <a
-          href="https://github.com/Arvonit/bgpsy/issues"
+          href="https://github.com/jfuruness/bgpy_pkg/issues"
           target="_blank"
           class="p-2 rounded-full hover:bg-gray-200">
           <Bug class="size-6" />
         </a>
-        <button on:click={() => (showInfo = true)} class="p-2 rounded-full hover:bg-gray-200">
+        <button on:click={() => (showCitation = true)} class="p-2 rounded-full hover:bg-gray-200">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
             <path
               d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
           </svg>
         </button>
       </div>
+    </div>
 
-      <Graph
+    <hr />
+  </div>
+
+  <!-- Two columns for form and graph -->
+  <div class={`flex flex-col md:flex-row`}>
+    <div
+      bind:this={firstColumn}
+      id="sidebar"
+      class={`order-2 md:order-1 px-6 py-3 bg-slate-50 md:min-w-[25vw] md:max-w-[50vw] flex-grow overflow-x-scroll ${
+        showSidebar ? '' : 'md:hidden'
+      }`}>
+      <ConfigForm
+        bind:config
         {nodes}
-        {edges}
-        {simulationResults}
-        bind:this={graphComponent}
-        bind:showModal={showAddASModal}
-        bind:showClearGraphModal
-        bind:cpLinks
-        bind:peerLinks
-        bind:policyMap />
+        bind:annROAStates
+        showLoadingSpinner={isLoading}
+        showDownloadZip={imageURL !== ''}
+        onSimulate={handleSimulate}
+        onLoadConfig={loadConfig}
+        onDownloadConfig={downloadConfig}
+        onDownloadZip={downloadZip} />
+    </div>
+
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="order-2 w-[3px] cursor-col-resize md:block hidden bg-slate-200"
+      on:mousedown={startDrag}>
+    </div>
+
+    <div class="order-1 md:order-3 px-6 py-3 flex-grow overflow-x-scroll">
+      <Graph {nodes} {edges} bind:config bind:simResults bind:imageURL bind:graphLoadingState />
     </div>
   </div>
 
+  <hr />
+
   <!-- Diagram accordion -->
   {#if imageURL}
-    <Accordion.Root class="mt-4">
+    <Accordion.Root class=" px-6">
       <Accordion.Item value="item-1">
         <Accordion.Trigger>Diagram</Accordion.Trigger>
         <Accordion.Content>
@@ -567,5 +523,17 @@
     </Accordion.Root>
   {/if}
 
-  <CitationModal bind:showModal={showInfo} on:close={() => (showInfo = false)} />
+  <CitationModal bind:showModal={showCitation} on:close={() => (showCitation = false)} />
 </main>
+
+<style>
+  #sidebar {
+    flex-basis: var(--sidebar-width, 33%);
+  }
+
+  @media (max-width: 768px) {
+    #sidebar {
+      flex-basis: 100%;
+    }
+  }
+</style>

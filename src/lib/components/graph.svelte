@@ -1,400 +1,312 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { Network, DataSet, type Options, type Node } from 'vis-network/standalone';
-  import Ban from 'lucide-svelte/icons/ban';
-  import { USE_FILE_MENU, getPropagationRanks } from '$lib';
-  import * as ContextMenu from './ui/context-menu';
-  import * as Dialog from './ui/dialog';
-  import * as AlertDialog from './ui/alert-dialog';
-  import { Input } from './ui/input';
-  import { Label } from './ui/label';
-  import Button from './ui/button/button.svelte';
-  import * as Popover from './ui/popover';
-  import Info from 'lucide-svelte/icons/info';
-  import * as Tabs from '$lib/components/ui/tabs';
-  import * as Card from '$lib/components/ui/card';
-  import { ArrowLeftRight, Pencil, Plus, Trash, Trash2 } from 'lucide-svelte';
-  import { countByValue, flyAndScale } from '$lib/utils';
+  import {
+    Network,
+    DataSet,
+    type Options,
+    type Node,
+    type Edge,
+    type IdType
+  } from 'vis-network/standalone';
+  import { type Config, type SimResults as SimResults } from '$lib/types';
+  import { Fullscreen, ZoomIn, ZoomOut, Ban, Info } from 'lucide-svelte';
+  import { countByValue, createGraph, flyAndScale } from '$lib/utils';
+  import { createCPEdge, createPeerEdge, getEdgeByFromTo } from '$lib/utils/link';
+  import {
+    drawLocalRIB,
+    drawShape,
+    drawText,
+    getFormattedASPolicyName,
+    getLocalRIBData,
+    getMaxNodeRadius,
+    getMaxWidths,
+    getNodeRadius
+  } from '$lib/utils/drawing';
+  import {
+    getASCustomers,
+    getASLevel,
+    getASPeers,
+    getASPolicy,
+    getASProviders,
+    getASRole,
+    updatePropRanks
+  } from '$lib/utils/as';
+  import * as Tooltip from '$lib/components/ui/tooltip';
+  import Button from '$lib/components/ui/button/button.svelte';
+  import AddASModal from './add-as-modal.svelte';
+  import ClearGraphModal from './clear-graph-modal.svelte';
+  import AddLinkModal from './add-link-modal.svelte';
+  import RenameASModal from './rename-as-modal.svelte';
+  import ASDetailsCard from './as-details-card.svelte';
+  import LinkDetailsCard from './link-details-card.svelte';
+  import GraphContextMenu from './graph-context-menu.svelte';
 
-  export let nodes: DataSet<{}>;
-  export let edges: DataSet<{}>;
-  export let simulationResults: {} | null;
-  export let cpLinks: number[][];
-  export let peerLinks: number[][];
-  export let showModal: boolean;
-  export let showClearGraphModal: boolean;
-  export let policyMap: Record<number, string>;
+  // Props
+  export let nodes: DataSet<Node>;
+  export let edges: DataSet<Edge>;
+  export let config: Config;
+  export let simResults: SimResults | null;
+  export let imageURL: string;
+  export let graphLoadingState: string;
 
+  // Vis-network
+  // let maxRadius = 0;
   let container: HTMLDivElement;
-  let network: Network;
-  let options: Options;
-  let selectedAS = null;
-  let selectedASN = null;
-  let selectedASLevel = null;
-  let selectedASRole = null;
-  let selectedASPolicy = null;
-  let selectedLink = null;
-  let selectedLinkID = null;
-  let selectedASN2 = null;
-  let selectedLinkID2 = null;
-  let showAddEdgeModal = false;
+  let network: Network | undefined;
+  let options: Options = {
+    // Configuration for vis-network
+    // configure: true,
+    nodes: {
+      shape: 'custom',
+      borderWidth: 2,
+      // @ts-ignore ctxRenderer does not have types in vis-network
+      ctxRenderer: ({ ctx, id, x, y, state: { selected, hover }, style, label }) => {
+        ctx.save();
+
+        // Font for the node
+        const fontSize = 14;
+        ctx.font = `${fontSize}px Inter`;
+
+        // Get local RIB data
+        const rows = getLocalRIBData(simResults, id);
+
+        // Find the max width for each column in local RIB table
+        const maxWidths = getMaxWidths(ctx, rows);
+
+        // Calculate dimensions of Local RIB table
+        const cellHeight = fontSize + 10;
+        const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0);
+        const tableHeight = cellHeight * (rows.length + 1);
+
+        // Get formatted AS policy name
+        const nodePolicy = getFormattedASPolicyName(config.asn_policy_map, id);
+
+        // Ensure nodes are around the same size
+        const maxRadius = getMaxNodeRadius(ctx, simResults, config.asn_policy_map, nodes);
+        let r = getNodeRadius(ctx, tableWidth, nodePolicy, rows);
+        if (rows.length > 0 && maxRadius * 0.75 > r) {
+          r = maxRadius * 0.75;
+        }
+
+        // Style for shape
+        ctx.fillStyle = style.color;
+        ctx.strokeStyle = style.borderColor;
+        ctx.lineWidth = selected || hover ? 4 : 2;
+
+        // Draw border of shape and color it in
+        drawShape(ctx, nodePolicy, x, y, r);
+
+        // Put the ASN and policy in the middle of the node
+        ctx.fillStyle = 'black';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Calculate the total height for centering
+        const totalHeight = (rows.length > 0 ? tableHeight : 0) + 2 * fontSize + 20;
+
+        // Draw ASN and policy
+        drawText(ctx, label, nodePolicy, totalHeight, fontSize, x, y);
+
+        // Draw Local RIB
+        drawLocalRIB(ctx, rows, tableWidth, tableHeight, maxWidths, cellHeight, x, y);
+
+        ctx.restore();
+
+        return {
+          drawNode: null,
+          nodeDimensions: { width: r * 2, height: r * 2 }
+        };
+      }
+    },
+    layout: {
+      hierarchical: {
+        enabled: true,
+        levelSeparation: 200,
+        nodeSpacing: 200,
+        sortMethod: 'directed'
+      }
+    },
+    edges: {
+      width: 2
+    },
+    manipulation: {
+      enabled: false,
+      addEdge: (data: Edge, callback: any) => {
+        // Prevent adding circular edge
+        if (data.from === data.to) {
+          network?.disableEditMode();
+          drawingCPLink = false;
+          drawingPeerLink = false;
+          return;
+        }
+
+        // Prevent adding duplicate edge
+        const fromASN = Number(data.from);
+        const toASN = Number(data.to);
+        const edge = getEdgeByFromTo(fromASN, toASN, edges);
+        if (edge !== null) {
+          return;
+        }
+
+        if (drawingCPLink) {
+          data = createCPEdge(fromASN, toASN);
+          config.graph.cp_links = [...config.graph.cp_links, [fromASN, toASN]];
+        } else if (drawingPeerLink) {
+          data = createPeerEdge(fromASN, toASN);
+          config.graph.peer_links = [...config.graph.peer_links, [fromASN, toASN]];
+        }
+
+        // Callback
+        callback(data);
+
+        // If we added an edge to the selected AS, reselect it so that it shows up on the details
+        // card
+        if (fromASN === selectedASN || toASN === selectedASN) {
+          refreshSelectedAS();
+        }
+
+        // Adjust height of graph
+        updatePropRanks(nodes, config);
+
+        // And disable edit mode
+        network?.disableEditMode();
+
+        // Reset buttons
+        drawingCPLink = false;
+        drawingPeerLink = false;
+      }
+    },
+    interaction: { hover: true, zoomSpeed: 0.7, zoomView: false },
+    physics: false
+  };
+
+  // Data for selected ASes and links
+  // TODO: Group all "selected" AS/link variables into separate types
+  let selectedAS: Node | null = null;
+  let selectedASN: number | null = null;
+  let selectedASRole: string | null = null;
+  let selectedASPolicy: string | null = null;
+  let selectedASLevel: number | null = null;
+  let selectedASProviders = Array<number | null>();
+  let selectedASCustomers = Array<number | null>();
+  let selectedASPeers = Array<number | null>();
+  let selectedLink: Edge | null = null;
+  let selectedLinkID: string | null = null;
+
+  // Store ASes and links that we hover over to determine which context menu actions to display
+  let hoveredASN: number | null = null;
+  let hoveredLink: Edge | null = null;
+
+  // Data for context menu
+  let showContextMenu = false;
+  let contextMenuX = 0;
+  let contextMenuY = 0;
+  let contextMenuASN: number | null = null;
+  let contextMenuLink: Edge | null = null;
+
+  // State variables for modals
+  let showAddASModal = false;
+  let showClearGraphModal = false;
+  let showAddLinkModal = false;
   let showRenameASModal = false;
   let showLegend = false;
-  // let showConfirmAddEdgeModal = false;
-  let newNodeId;
-  let renamedASN: number;
-  let newASPolicy = 'bgp';
-  let newASRole = '';
-  let newEdgeFrom;
-  let newEdgeTo;
-  let newPeer1;
-  let newPeer2;
-  let edgeType = 'cp'; // Default edge type
-  let callbackFunc;
-  let callbackData;
-  let nodeData: {} | null = null;
-  let edgeData: {} | null = null;
-  let contextMenuData = { show: false, x: 0, y: 0 };
-  let victimASN = null;
-  let newLinkType = null;
-  let addingEdge = false;
-  let addingCPLink = false;
-  let addingPeerLink = false;
-  let rightClick = false;
-  let newASCustomers = [];
-  let newASProviders = [];
-  let newASPeers = [];
-  let selectedASRelationships = {
-    customers: Array<number | null>(),
-    providers: Array<number | null>(),
-    peers: Array<number | null>()
+
+  // Determine whether we're drawing a CP link or peer link
+  let drawingCPLink = false;
+  let drawingPeerLink = false;
+
+  // Reference to hidden canvas element
+  let canvas: HTMLCanvasElement | undefined;
+
+  // Used for vis-network's `on('click')` event handler signature
+  // https://visjs.github.io/vis-network/docs/network/#Events
+  type VisNetworkOnClickParams = {
+    nodes: IdType[];
+    edges: IdType[];
+    event: object[];
+    pointer: {
+      DOM: { x: number; y: number };
+      canvas: { x: number; y: number };
+    };
   };
 
   onMount(() => {
-    // Configuration for the network
-    options = {
-      // configure: true,
-      nodes: {
-        shape: 'custom',
-        size: 30,
-        font: {
-          size: 20
-        },
-        borderWidth: 2,
-        // color: {
-        //   background: '#38bdf8'
-        // },
-
-        ctxRenderer: function ({ ctx, id, x, y, state: { selected, hover }, style, label }) {
-          ctx.save();
-
-          // console.log(`Rendering ${label}`);
-
-          // Define the data for the table (replace with dynamic data if needed)
-          const header = ['Local RIB'];
-          // const rows = [
-          //   ['/16', '1, 2, 777', '😇'],
-          //   ['/24', '666', '😈']
-          // ];
-          let rows = [];
-          if (simulationResults && simulationResults.local_ribs[label]) {
-            rows = simulationResults.local_ribs[label].map(({ type, mask, as_path }) => {
-              return [mask, as_path.join(', '), type === 'attacker' ? '😈' : '😇'];
-            });
-          }
-
-          const fontSize = 14; // Font size for the table
-          ctx.font = `${fontSize}px sans-serif`;
-
-          // Measure text to determine table size
-          let maxTextWidth = 0;
-          let totTextWidth = 0;
-
-          let maxWidths = [0, 0, 0];
-          for (let i = 0; i < rows.length; i++) {
-            let width = ctx.measureText(rows[i][0]).width + 5;
-            maxWidths[0] = Math.max(maxWidths[0], width);
-
-            width = ctx.measureText(rows[i][1]).width + 5;
-            maxWidths[1] = Math.max(maxWidths[1], width);
-
-            width = ctx.measureText(rows[i][2]).width + 5;
-            maxWidths[2] = Math.max(maxWidths[2], width);
-          }
-
-          // const cellWidth = maxTextWidth + 0; // Width of each cell
-          const cellHeight = fontSize + 10; // Height of each cell
-          const tableWidth = maxWidths.reduce((sum, a) => sum + a, 0); // Total table width cellWidth * 3
-          const tableHeight = cellHeight * (rows.length + 1); // Total table height
-          const r = Math.max(30, tableWidth / 1.7); // Radius of the circle
-
-          let nodePolicy = 'BGP';
-          if (id in policyMap) {
-            nodePolicy = policyMap[id].toLowerCase();
-
-            // Format policy
-            if (
-              nodePolicy === 'bgp' ||
-              nodePolicy === 'rov' ||
-              nodePolicy === 'aspa' ||
-              nodePolicy === 'otc'
-            ) {
-              nodePolicy = nodePolicy.toUpperCase();
-            } else if (nodePolicy === 'pathend') {
-              nodePolicy = 'Pathend';
-            } else if (nodePolicy === 'bgpsec') {
-              nodePolicy = 'BGPSec';
-            }
-          }
-
-          // Clear previous path
-          ctx.beginPath();
-
-          if (nodePolicy === 'BGP') {
-            // Draw a circle
-            ctx.arc(x, y, r, 0, 2 * Math.PI, false);
-          } else {
-            // Draw an octagon
-            const angle = (2 * Math.PI) / 8; // Octagon angle
-            ctx.moveTo(x + r * Math.cos(0), y + r * Math.sin(0));
-            for (let i = 1; i < 8; i++) {
-              ctx.lineTo(x + r * Math.cos(angle * i), y + r * Math.sin(angle * i));
-            }
-            ctx.closePath();
-          }
-
-          // Style for shape
-          ctx.fillStyle = style.color;
-          ctx.fill();
-          ctx.strokeStyle = '#003366'; // Dark blue border
-          ctx.lineWidth = selected || hover ? 4 : 2;
-          ctx.stroke();
-
-          // Draw the node value inside the circle at the top
-          ctx.fillStyle = 'black';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-
-          if (
-            simulationResults &&
-            simulationResults.local_ribs[label] &&
-            simulationResults.local_ribs[label].length > 0
-          ) {
-            ctx.fillText(label, x, y - tableHeight / 1.5);
-            ctx.fillText(nodePolicy, x, y - tableHeight / 2.75);
-          } else {
-            ctx.fillText(label, x, y - tableHeight / 2);
-            ctx.fillText(nodePolicy, x, y + tableHeight / 2);
-          }
-
-          // Draw the table
-          const startX = x - tableWidth / 2;
-          const startY = y - tableHeight / 2;
-          ctx.strokeStyle = 'black';
-          ctx.lineWidth = 1;
-
-          // Draw header
-          ctx.fillStyle = 'black';
-
-          // Draw rows
-          for (let i = 0; i < rows.length; i++) {
-            let prevWidth = startX;
-            for (let j = 0; j < rows[i].length; j++) {
-              const cell = rows[i][j];
-              // const width = cellWidth;
-              // const width = ctx.measureText(cell).width + 5;
-              const width = maxWidths[j];
-              // const cellX = startX + j * width;
-              const cellX = prevWidth;
-              const cellY = startY + (i + 1) * cellHeight;
-              // ctx.fillStyle = 'white';
-              // ctx.fillRect(cellX, cellY, width, cellHeight);
-              ctx.strokeRect(cellX, cellY, width, cellHeight);
-              ctx.fillStyle = 'black';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(cell, cellX + width / 2, cellY + cellHeight / 2);
-              prevWidth += width;
-            }
-          }
-
-          ctx.restore();
-          return {
-            drawNode: null,
-            nodeDimensions: { width: r * 2, height: r * 2 }
-          };
-        }
-      },
-      layout: {
-        hierarchical: {
-          enabled: true,
-          levelSeparation: 200,
-          nodeSpacing: 200,
-          sortMethod: 'directed'
-        }
-      },
-      edges: {
-        width: 2
-      },
-      manipulation: {
-        enabled: false,
-        addEdge: (data, callback) => {
-          // Prevent adding edge to same node
-          if (data.to === data.from) {
-            newLinkType = null;
-            network.disableEditMode();
-            addingEdge = false;
-            addingCPLink = false;
-            addingPeerLink = false;
-            return;
-          }
-
-          // TODO: Prevent adding duplicate edge
-
-          if (newLinkType === 'customer-provider') {
-            // customer-provider logic
-            data.arrows = {
-              to: {
-                enabled: true,
-                scaleFactor: 0.8
-              }
-            };
-            cpLinks = [...cpLinks, [data.from, data.to]];
-          } else if (newLinkType === 'peer') {
-            // peer-to-peer edge logic
-            data.dashes = true;
-            // data.width = 2;
-            data.arrows = 'to, from';
-            peerLinks = [...peerLinks, [data.from, data.to]];
-          }
-          newLinkType = null;
-
-          // Callback
-          callback(data);
-
-          // Adjust height of graph
-          const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-          // console.log('levels', levels);
-          nodes.forEach((node) => {
-            nodes.update({ ...node, level: levels[node.id] || 1 });
-          });
-          // And disable edit mode
-          network.disableEditMode();
-          // Re-enable hover
-          // network.setOptions({ ...options, interaction: { hover: true } });
-          addingEdge = false;
-          addingCPLink = false;
-          addingPeerLink = false;
-        }
-      },
-      interaction: { hover: true, zoomSpeed: 0.7, zoomView: false, navigationButtons: true },
-      physics: false
-    };
-
     // Initialize network
     network = new Network(container, { nodes, edges }, options);
-    network.disableEditMode();
+    container.addEventListener('wheel', handleWheel, { passive: false });
 
-    network.on('click', (params) => {
+    network.on('click', (params: VisNetworkOnClickParams) => {
       if (params.nodes.length > 0) {
-        selectedLinkID = null;
-        selectedLink = null;
-        selectedASN = params.nodes[0];
-        selectedAS = nodes.get(selectedASN);
-        selectedASLevel = selectedAS.level;
-        selectedASRole = selectedAS.role || ''; // Get the role of the selected node
-        selectedASPolicy = selectedAS.policy || 'bgp';
-        selectedASRelationships = getRelationships(selectedASN);
-        // console.log('selected AS: ' + selectedAS);
+        // Deselect edge
+        deselectLink();
+
+        // Select node
+        selectAS(Number(params.nodes[0]));
       } else if (params.edges.length > 0) {
-        selectedASN = null;
-        selectedAS = null;
-        selectedASLevel = null;
-        selectedLinkID = params.edges[0];
-        selectedLink = edges.get(selectedLinkID);
+        // Deselect node
+        deselectAS();
+
+        // Select link
+        selectLink(String(params.edges[0]));
       }
 
-      contextMenuData.show = false;
-      rightClick = true;
+      showContextMenu = false;
     });
 
     network.on('deselectNode', () => {
-      selectedASN = null;
-      selectedAS = null;
-      selectedASLevel = null;
-      contextMenuData.show = false;
+      deselectAS();
+      showContextMenu = false;
     });
 
     network.on('deselectEdge', () => {
-      selectedLinkID = null;
+      deselectLink();
+      showContextMenu = false;
     });
 
     // Right click
     network.on('oncontext', function (params) {
-      // params.event.preventDefault();
-      rightClick = true;
-      let show = false;
+      params.event.preventDefault();
+      contextMenuX = params.event.pageX;
+      contextMenuY = params.event.pageY;
 
-      // console.log(network.getNodeAt(network.DOMtoCanvas({ x: event.pageX, y: event.pageY })));
-      if (nodeData !== null) {
-        // selectedASN = nodeData.id;
-        selectedASN2 = nodeData.id;
-        selectedLinkID2 = null;
-        show = true;
-        params.event.preventDefault();
-        nodeData = null;
-      } else if (edgeData !== null) {
-        // selectedLinkID = edgeData.id;
-        selectedLinkID2 = edgeData.id;
-        selectedASN2 = null;
-        show = true;
-        params.event.preventDefault();
+      if (hoveredASN !== null) {
+        contextMenuASN = hoveredASN;
+        contextMenuLink = null;
+      } else if (hoveredLink !== null) {
+        contextMenuLink = hoveredLink;
+        contextMenuASN = null;
       } else {
-        selectedASN2 = null;
-        selectedLinkID2 = null;
-        show = true;
-        params.event.preventDefault();
+        contextMenuASN = null;
+        contextMenuLink = null;
       }
-      contextMenuData = {
-        show: show,
-        x: params.event.pageX,
-        y: params.event.pageY
-      };
+
+      showContextMenu = true;
     });
 
-    // Show Local RIB on hover
+    // Keep track of node being hovered over for context menu
     network.on('hoverNode', (params) => {
-      if (addingEdge) {
+      if (drawingCPLink || drawingPeerLink) {
         return;
       }
-      const node = nodes.get(params.node);
-      if (node !== null) {
-        nodeData = {
-          id: node.id,
-          policy: node.policy || 'BGP',
-          x: params.event.pageX,
-          y: params.event.pageY
-        };
-      }
-      // console.log(nodeData);
+
+      hoveredASN = params.node;
     });
 
     network.on('blurNode', (params) => {
-      nodeData = null;
+      hoveredASN = null;
     });
 
     network.on('hoverEdge', (params) => {
-      const edge = edges.get(params.edge);
-      // console.log('edge found', edge);
-      edgeData = {
-        id: edge.id,
-        x: params.event.pageX,
-        y: params.event.pageY
-      };
+      if (drawingCPLink || drawingPeerLink) {
+        return;
+      }
+
+      const link = edges.get(params.edge);
+      hoveredLink = link;
     });
 
     network.on('blurEdge', (params) => {
-      edgeData = null;
+      hoveredLink = null;
     });
   });
 
@@ -404,1452 +316,406 @@
     }
   });
 
-  $: if (selectedAS && selectedASLevel !== selectedAS.level) {
-    selectedAS = { ...selectedAS, level: selectedASLevel };
-    nodes.update(selectedAS);
+  function updateSeparationDistance() {
+    if (!canvas || !network) {
+      return;
+    }
+
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = '14px Inter';
+
+    // Calculate radius of each node and set a new separation distance based on the size of the
+    // largest node
+    const maxRadius = getMaxNodeRadius(ctx, simResults, config.asn_policy_map, nodes);
+    setNodeDistance(Math.max(200, 130 + maxRadius), Math.max(200, 130 + maxRadius));
+
+    centerGraph();
   }
 
-  $: if (simulationResults) {
+  // For some reason, this gets run twice after a simulation is ran once
+  // TODO: Move this logic to handleSubmit
+  $: if (simResults !== null) {
+    updateSeparationDistance();
+
+    deselectAS();
+    deselectLink();
+
+    // Show legend after simulation is ran
     showLegend = true;
+
+    console.log('simResults is not null', simResults);
   }
 
-  function addNode() {
-    if (!newNodeId) {
-      return;
-    }
-    const newNode = {
-      id: Number(newNodeId),
-      label: String(newNodeId),
-      level: 1
-    };
+  $: if (simResults === null && network) {
+    // Every time a graph is reset, set the separation distance back to 200
+    setNodeDistance(200, 200);
 
-    // TODO: Refactor
-    // This code is really, really bad
-    if (
-      newASPolicy.toLowerCase() === 'rov' ||
-      newASPolicy.toLowerCase() === 'aspa' ||
-      newASPolicy.toLowerCase() === 'bgpsec' ||
-      newASPolicy.toLowerCase() === 'otc' ||
-      newASPolicy.toLowerCase() === 'pathend'
-    ) {
-      policyMap[Number(newNodeId)] = newASPolicy;
-      // console.log(policyMap[Number(newNodeId)]);
-    }
-
-    newNode.policy = newASPolicy;
-    // newNode.shape = shape;
-
-    if (newASRole === 'victim') {
-      const colorProp = { border: '#047857', background: '#34d399' };
-      newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
-      newNode.role = newASRole;
-    } else if (newASRole === 'attacker') {
-      const colorProp = { border: '#b91c1c', background: '#f87171' };
-      newNode.color = { ...colorProp, highlight: colorProp, hover: colorProp };
-      newNode.role = newASRole;
-    }
-
-    // Add node
-    nodes.add(newNode);
-
-    // Set edges
-    for (const customer of newASCustomers) {
-      if (customer === null) {
-        continue;
-      }
-      const newEdge = {
-        from: Number(newNodeId),
-        to: Number(customer),
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      };
-      // console.log('customer:', newEdge);
-      edges.add(newEdge);
-      cpLinks = [...cpLinks, [Number(newNodeId), Number(customer)]];
-    }
-
-    for (const provider of newASProviders) {
-      if (provider === null) {
-        continue;
-      }
-      const newEdge = {
-        from: Number(provider),
-        to: Number(newNodeId),
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      };
-      // console.log('provider:', newEdge);
-      edges.add(newEdge);
-      cpLinks = [...cpLinks, [Number(provider), Number(newNodeId)]];
-    }
-
-    for (const peer of newASPeers) {
-      if (peer === null) {
-        continue;
-      }
-      const newEdge = {
-        from: Number(newNodeId),
-        to: Number(peer),
-        dashes: true,
-        width: 2,
-        arrows: 'to, from'
-      };
-      // console.log('peer:', newEdge);
-      edges.add(newEdge);
-      peerLinks = [...peerLinks, [Number(newNodeId), Number(peer)]];
-    }
-
-    console.log('nodes after adding node:', nodes.get());
-    console.log('edges after adding node:', edges.get());
-
-    // Refresh graph
-    network.setData({ nodes, edges });
-
-    // Adjust height of graph
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
-
-    // Reset input
-    newNodeId = '';
-    newASPolicy = 'bgp';
-    newASRole = '';
-    newASCustomers = [];
-    newASProviders = [];
-    newASPeers = [];
-
-    showModal = false; // Close modal
+    console.log('simresults is null');
   }
 
-  function addEdge() {
-    if (edgeType === 'cp' && newEdgeFrom && newEdgeTo) {
-      // Customer-provider edge logic
-      const newEdge = {
-        from: Number(newEdgeFrom),
-        to: Number(newEdgeTo),
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      };
-      edges.add(newEdge);
-      network.setData({ nodes, edges });
+  // Ran every time a new graph is loaded
+  $: if ((graphLoadingState === 'file' || graphLoadingState === 'example') && network) {
+    centerGraph();
 
-      cpLinks = [...cpLinks, [Number(newEdgeFrom), Number(newEdgeTo)]];
-      newEdgeFrom = '';
-      newEdgeTo = ''; // Reset inputs
-      showAddEdgeModal = false; // Close modal
-    } else if (edgeType === 'peer' && newPeer1 && newPeer2) {
-      // peer-to-peer edge logic
-      const newEdge = {
-        from: Number(newPeer1),
-        to: Number(newPeer2),
-        dashes: true,
-        width: 2,
-        arrows: 'to, from'
-      };
-      edges.add(newEdge);
-      network.setData({ nodes, edges });
+    deselectAS();
+    deselectLink();
 
-      peerLinks = [...peerLinks, [Number(newPeer1), Number(newPeer2)]];
-      newPeer1 = '';
-      newPeer2 = ''; // Reset inputs
-      showAddEdgeModal = false; // Close modal
-    } else {
+    graphLoadingState = '';
+    imageURL = '';
+  }
+
+  // TODO: Get this working properly
+  // Center graph every time sidebar is toggled
+  // $: if (graphLoadingState === 'toggle-sidebar-on') {
+  //   console.log('toggled sidebar on');
+  //   centerGraph();
+  // }
+  // $: if (graphLoadingState === 'toggle-sidebar-off') {
+  //   console.log('toggled sidebar off');
+  //   centerGraph();
+  // }
+
+  // $: selectedASN, console.log('changed', selectedASN);
+
+  function selectAS(asn: number) {
+    selectedASN = asn;
+    selectedAS = nodes.get(selectedASN);
+
+    // Something went wrong
+    if (selectedAS === null) {
+      deselectAS();
+      console.log(`error: selected AS ${asn} does not exist in nodes dataset!`);
       return;
     }
 
-    // Adjust height of graph
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
+    selectedASRole = getASRole(selectedASN, config);
+    selectedASPolicy = getASPolicy(selectedASN, config);
+    selectedASLevel = getASLevel(selectedAS, config);
+    selectedASProviders = getASProviders(selectedASN, config);
+    selectedASCustomers = getASCustomers(selectedASN, config);
+    selectedASPeers = getASPeers(selectedASN, config);
+
+    // selectedASRelationships = getRelationships(selectedASN as number);
   }
 
-  export function addCPLink() {
-    if (!addingCPLink) {
-      network.addEdgeMode();
-      newLinkType = 'customer-provider';
-      addingEdge = true;
-    } else {
-      network.disableEditMode();
-      addingEdge = false;
-    }
-
-    // network.setOptions({ ...options, interaction: { hover: false } });
-
-    addingCPLink = !addingCPLink;
-    addingPeerLink = false;
+  function selectLink(id: string) {
+    selectedLinkID = id;
+    selectedLink = edges.get(selectedLinkID);
   }
 
-  export function addPeerLink() {
-    if (!addingPeerLink) {
-      network.addEdgeMode();
-      newLinkType = 'peer';
-      addingEdge = false;
-    } else {
-      network.disableEditMode();
-      addingEdge = false;
+  function refreshSelectedAS() {
+    if (selectedASN !== null) {
+      network?.selectNodes([selectedASN], true);
+      selectAS(selectedASN);
     }
-
-    // network.setOptions({ ...options, interaction: { hover: false } });
-
-    addingPeerLink = !addingPeerLink;
-    addingCPLink = false;
   }
 
-  function addEdge2() {
-    if (edgeType === 'peer') {
-      callbackData.dashes = true;
-      callbackData.width = 2;
-      callbackData.arrows = 'to, from';
-    }
-
-    showConfirmAddEdgeModal = false;
-    // callbackFunc = null;
-    // callbackData = null;
-    callbackFunc(callbackData);
-  }
-
-  function deleteNode() {
-    if (selectedASN === null) {
-      return;
-    }
-
-    // Log before
-    // console.log('before delete node', edges, cpLinks, peerLinks);
-
-    // Get all connected edges to the node
-    const connectedEdges = edges.get({
-      filter: function (item) {
-        return item.from === selectedASN || item.to === selectedASN;
-      }
-    });
-
-    // Remove all connected edges from the network
-    edges.remove(connectedEdges.map((edge) => edge.id));
-    cpLinks = cpLinks.filter((link) => link[0] !== selectedASN && link[1] !== selectedASN);
-    peerLinks = peerLinks.filter((link) => link[0] !== selectedASN && link[1] !== selectedASN);
-
-    // Remove the node
-    nodes.remove(selectedASN);
-
-    // Log to check
-    // console.log('after delete node', edges, cpLinks, peerLinks);
-
-    // Adjust height of graph
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
-
-    // network.setData({ nodes, edges });
-    selectedASN = null;
+  function deselectAS() {
     selectedAS = null;
+    selectedASN = null;
     selectedASLevel = null;
+    selectedASRole = null;
+    selectedASPolicy = null;
+    selectedASProviders = [];
+    selectedASCustomers = [];
+    selectedASPeers = [];
   }
 
-  function deleteEdge() {
-    if (selectedLinkID !== null) {
-      const edge = edges.get(selectedLinkID);
-      if (edge.dashes) {
-        peerLinks = peerLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-      } else {
-        cpLinks = cpLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-      }
+  function deselectLink() {
+    selectedLink = null;
+    selectedLinkID = null;
+  }
 
-      edges.remove(selectedLinkID);
-      // network.setData({ nodes, edges });
-      selectedLinkID = null;
-      selectedLink = null;
+  function zoomIn() {
+    network?.moveTo({
+      scale: network.getScale() * 1.25,
+      animation: { duration: 200, easingFunction: 'linear' }
+    });
+  }
 
-      // Update height
-      console.log('links in deleteEdge', cpLinks, peerLinks);
-      const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-      nodes.forEach((node) => {
-        nodes.update({ ...node, level: levels[node.id] || 1 });
+  function zoomOut() {
+    network?.moveTo({
+      scale: network.getScale() / 1.25,
+      animation: { duration: 200, easingFunction: 'linear' }
+    });
+  }
+
+  function centerGraph() {
+    network?.fit();
+    if (simResults) {
+      network?.moveTo({
+        scale: network.getScale() - 0.05
       });
     }
   }
 
-  function updateASRole() {
-    if (selectedASN !== null) {
-      let color: {} | null;
-
-      if (selectedASRole === 'victim') {
-        const colorProp = { border: '#047857', background: '#34d399' };
-        color = { ...colorProp, highlight: colorProp, hover: colorProp };
-
-        if (victimASN !== null && victimASN !== selectedASN) {
-          nodes.update({ id: victimASN, role: null, color: null });
+  function setNodeDistance(verticalDistance: number, horizontalDistance: number) {
+    network?.setOptions({
+      ...options,
+      layout: {
+        hierarchical: {
+          ...options.layout.hierarchical,
+          levelSeparation: verticalDistance,
+          nodeSpacing: horizontalDistance
         }
-
-        victimASN = selectedASN;
-      } else if (selectedASRole === 'attacker') {
-        const colorProp = { border: '#b91c1c', background: '#f87171' };
-        color = { ...colorProp, highlight: colorProp, hover: colorProp };
-      } else {
-        color = null;
       }
-      nodes.update({
-        id: selectedASN,
-        role: selectedASRole,
-        color: color
+    });
+  }
+
+  function handleWheel(event: WheelEvent) {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const direction = event.deltaY > 0 ? 1 / 1.1 : 1.1;
+      network?.moveTo({
+        scale: network.getScale() * direction,
+        animation: { duration: 50, easingFunction: 'linear' }
       });
     }
   }
 
-  function updateASPolicy() {
-    if (selectedASN !== null) {
-      if (
-        selectedASPolicy.toLowerCase() === 'rov' ||
-        selectedASPolicy.toLowerCase() === 'aspa' ||
-        selectedASPolicy.toLowerCase() === 'bgpsec' ||
-        selectedASPolicy.toLowerCase() === 'otc' ||
-        selectedASPolicy.toLowerCase() === 'pathend'
-      ) {
-        // shape = 'hexagon';
-        policyMap[selectedASN] = selectedASPolicy;
-      } else {
-        delete policyMap[selectedASN];
-      }
-      console.log(policyMap);
-      nodes.update({ id: selectedASN, policy: selectedASPolicy });
-      // network.setData({ nodes, edges });
+  function addCPLink() {
+    if (!drawingCPLink) {
+      network?.addEdgeMode();
+      drawingCPLink = true;
+    } else {
+      network?.disableEditMode();
+      drawingCPLink = false;
     }
+
+    drawingPeerLink = false;
+  }
+
+  function addPeerLink() {
+    if (!drawingPeerLink) {
+      network?.addEdgeMode();
+      drawingPeerLink = true;
+    } else {
+      network?.disableEditMode();
+      drawingPeerLink = false;
+    }
+
+    drawingCPLink = false;
   }
 
   function clearGraph() {
+    // Clear graph
     nodes.clear();
     edges.clear();
-  }
 
-  function handleContextMenuAction(action: string) {
-    if (action === 'deleteNode' && selectedASN2 !== null) {
-      // Log before
-      console.log('before delete node', edges, cpLinks, peerLinks);
+    // Clear links, policy map, and roles
+    config.graph = createGraph();
+    config.asn_policy_map = {};
+    config.victim_asns = [];
+    config.attacker_asns = [];
 
-      // Get all connected edges to the node
-      const connectedEdges = edges.get({
-        filter: function (item) {
-          return item.from === selectedASN2 || item.to === selectedASN2;
-        }
-      });
-
-      // Remove all connected edges from the network
-      edges.remove(connectedEdges.map((edge) => edge.id));
-      cpLinks = cpLinks.filter((link) => link[0] !== selectedASN2 && link[1] !== selectedASN2);
-      peerLinks = peerLinks.filter((link) => link[0] !== selectedASN2 && link[1] !== selectedASN2);
-
-      // Remove the node
-      nodes.remove(selectedASN2);
-
-      // Log to check
-      // console.log('after delete node', edges, cpLinks, peerLinks);
-
-      // network.setData({ nodes, edges });
-      selectedASN2 = null;
-    } else if (action === 'deleteEdge' && selectedLinkID2 !== null) {
-      const edge = edges.get(selectedLinkID2);
-      // console.log(selectedLinkID2);
-      // console.log(edge.from, edge.to);
-
-      if (edge.dashes) {
-        peerLinks = peerLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-      } else {
-        cpLinks = cpLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-      }
-
-      edges.remove(selectedLinkID2);
-      selectedLinkID2 = null;
-    } else if (action === 'switchEdge' && selectedLinkID2 !== null) {
-      const edge = edges.get(selectedLinkID2);
-      edges.update({ id: selectedLinkID2, dashes: !edge.dashes });
-      if (edge.dashes) {
-        peerLinks = peerLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-        cpLinks = [...cpLinks, [edge.from, edge.to]];
-      } else {
-        cpLinks = cpLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-        peerLinks = [...peerLinks, [edge.from, edge.to]];
-      }
-
-      selectedLinkID2 = null;
-    } else if (action === 'swapCP' && selectedLinkID2 !== null) {
-      const edge = edges.get(selectedLinkID2);
-      edges.update({
-        id: selectedLinkID2,
-        from: edge.to, // Swap 'from' and 'to'
-        to: edge.from
-      });
-      const linkIndex = cpLinks.findIndex((link) => link[0] === edge.from && link[1] === edge.to);
-      if (linkIndex !== -1) {
-        cpLinks[linkIndex] = [edge.to, edge.from]; // Swap the link
-      }
-      selectedLinkID2 = null;
-    } else if (action === 'switchEdge2' && selectedLinkID !== null) {
-      const edge = edges.get(selectedLinkID);
-      edges.update({ id: selectedLinkID, dashes: !edge.dashes });
-      if (edge.dashes) {
-        peerLinks = peerLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-        cpLinks = [...cpLinks, [edge.from, edge.to]];
-      } else {
-        cpLinks = cpLinks.filter((link) => link[0] !== edge.from || link[1] !== edge.to);
-        peerLinks = [...peerLinks, [edge.from, edge.to]];
-      }
-    } else if (action === 'swapCP2' && selectedLinkID !== null) {
-      const edge = edges.get(selectedLinkID);
-      edges.update({
-        id: selectedLinkID,
-        from: edge.to, // Swap 'from' and 'to'
-        to: edge.from
-      });
-      const linkIndex = cpLinks.findIndex((link) => link[0] === edge.from && link[1] === edge.to);
-      if (linkIndex !== -1) {
-        cpLinks[linkIndex] = [edge.to, edge.from]; // Swap the link
-      }
-    }
-
-    // Update prop ranks
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
-
-    contextMenuData.show = false;
-  }
-
-  function availableNodes(array: any[], index: number, asnToIgnore: number | null = null) {
-    // console.log(asnToIgnore);
-    const avail = nodes.get().filter((node: Node) => {
-      return (!array.includes(node.id) || array[index] === node.id) && node.id !== asnToIgnore;
-    });
-    // console.log(avail);
-    return avail;
-  }
-
-  function getRelationships(asn) {
-    const customers = [];
-    const providers = [];
-    const peers = [];
-
-    edges.forEach((edge) => {
-      if (edge.from === asn) {
-        if (edge.arrows && edge.arrows.to) {
-          customers.push(edge.to);
-        } else if (edge.dashes) {
-          peers.push(edge.to);
-        }
-      } else if (edge.to === asn) {
-        if (edge.arrows && edge.arrows.to) {
-          providers.push(edge.from);
-        } else if (edge.dashes) {
-          peers.push(edge.from);
-        }
-      }
-    });
-
-    return { customers, providers, peers };
-  }
-
-  function findEdgeByFromTo(fromId, toId) {
-    let matchingEdges = edges.get({
-      filter: (edge) => {
-        return edge.from === fromId && edge.to === toId;
-      }
-    });
-
-    if (matchingEdges.length > 0) {
-      return matchingEdges[0]; // Return the first matching edge
-    } else {
-      return null; // Return null if no matching edge is found
-    }
-  }
-
-  function updateRelationship(type, oldASN, newASN) {
-    if (type === 'provider') {
-      // Update the edges DataSet
-      const edge = findEdgeByFromTo(oldASN, selectedASN);
-      if (edge !== null) {
-        edges.remove(edge);
-      }
-
-      edges.add({
-        from: newASN,
-        to: selectedASN,
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      });
-
-      // Update cpLinks array
-      cpLinks = cpLinks.filter((link) => !(link[0] === oldASN && link[1] === selectedASN));
-      cpLinks = [...cpLinks, [newASN, selectedASN]];
-    } else if (type === 'customer') {
-      const edge = findEdgeByFromTo(selectedASN, oldASN);
-      if (edge !== null) {
-        edges.remove(edge);
-      }
-
-      edges.add({
-        from: selectedASN,
-        to: newASN,
-        arrows: {
-          to: {
-            enabled: true,
-            scaleFactor: 0.8
-          }
-        }
-      });
-
-      // Update cpLinks array
-      cpLinks = cpLinks.filter((link) => !(link[0] === selectedASN && link[1] === oldASN));
-      cpLinks = [...cpLinks, [selectedASN, newASN]];
-    } else if (type === 'peer') {
-      // Remove in both directions if needed
-      let edge = findEdgeByFromTo(selectedASN, oldASN);
-      if (edge !== null) {
-        edges.remove(edge);
-      }
-      edge = findEdgeByFromTo(oldASN, selectedASN);
-      if (edge !== null) {
-        edges.remove(edge);
-      }
-
-      edges.add({ from: selectedASN, to: newASN, dashes: true, width: 2, arrows: 'to, from' });
-
-      // Update peerLinks array
-      peerLinks = peerLinks.filter(
-        (link) =>
-          !(link[0] === oldASN && link[1] === selectedASN) &&
-          !(link[0] === selectedASN && link[1] === oldASN)
-      );
-      peerLinks = [...peerLinks, [selectedASN, newASN]];
-    }
-
-    selectedASRelationships = getRelationships(selectedASN);
-
-    // Adjust height of graph
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
-  }
-
-  function deleteRelationship(type, targetASN) {
-    if (type === 'provider') {
-      // // Find the edge in the edges DataSet and remove it
-      // const edgeId = edges.get({
-      //   filter: function (edge) {
-      //     return (
-      //       (type === 'provider' && edge.from === targetASN && edge.to === selectedASN) ||
-      //       (type === 'customer' && edge.from === selectedASN && edge.to === targetASN)
-      //     );
-      //   }
-      // })[0]?.id;
-      // if (edgeId) {
-      //   edges.remove(edgeId);
-      //   // Update cpLinks array
-      //   cpLinks = cpLinks.filter(
-      //     (link) =>
-      //       !(link[0] === targetASN && link[1] === selectedASN) &&
-      //       !(link[0] === selectedASN && link[1] === targetASN)
-      //   );
-      // }
-      const edge = findEdgeByFromTo(targetASN, selectedASN);
-      if (edge !== null) {
-        edges.remove(edge);
-        cpLinks = cpLinks.filter((link) => !(link[0] === targetASN && link[1] === selectedASN));
-      }
-    } else if (type === 'customer') {
-      const edge = findEdgeByFromTo(selectedASN, targetASN);
-      if (edge !== null) {
-        edges.remove(edge);
-        cpLinks = cpLinks.filter((link) => !(link[0] === selectedASN && link[1] === targetASN));
-      }
-    } else if (type === 'peer') {
-      // Peers might have bidirectional edges, so check both directions
-      // const edgeId1 = edges.get({
-      //   filter: (edge) => edge.from === selectedASN && edge.to === targetASN
-      // })[0]?.id;
-      // const edgeId2 = edges.get({
-      //   filter: (edge) => edge.from === targetASN && edge.to === selectedASN
-      // })[0]?.id;
-
-      // if (edgeId1) {
-      //   edges.remove(edgeId1);
-      // }
-      // if (edgeId2) {
-      //   edges.remove(edgeId2);
-      // }
-      // Remove in both directions if needed
-      let edge = findEdgeByFromTo(selectedASN, targetASN);
-      if (edge !== null) {
-        edges.remove(edge);
-      }
-      edge = findEdgeByFromTo(targetASN, selectedASN);
-      if (edge !== null) {
-        edges.remove(edge);
-      }
-
-      // Update peerLinks array
-      peerLinks = peerLinks.filter(
-        (link) =>
-          !(link[0] === selectedASN && link[1] === targetASN) &&
-          !(link[0] === targetASN && link[1] === selectedASN)
-      );
-    }
-
-    // Update the local state to reflect changes
-    selectedASRelationships = getRelationships(selectedASN);
-
-    // Adjust height of graph
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
-  }
-
-  function renameAS(oldASN, newASN) {
-    // Number already used
-    if (nodes.get({ filter: (node) => node.id === newASN }).length > 0) {
-      return;
-    }
-
-    // Update the node's ID and label
-    const nodeToUpdate = nodes.get(oldASN);
-    if (!nodeToUpdate) {
-      return;
-    }
-    nodes.remove(nodeToUpdate);
-    nodes.add({ ...nodeToUpdate, id: Number(newASN), label: String(newASN) });
-
-    // Update all edges connected to this node
-    edges.forEach((edge) => {
-      if (edge.from === oldASN) {
-        edges.update({ ...edge, from: newASN });
-      }
-      if (edge.to === oldASN) {
-        edges.update({ ...edge, to: newASN });
-      }
-    });
-
-    // Update cpLinks and peerLinks if necessary
-    cpLinks = cpLinks.map((link) => link.map((id) => (id === oldASN ? newASN : id)));
-    peerLinks = peerLinks.map((link) => link.map((id) => (id === oldASN ? newASN : id)));
-
-    // Adjust height of graph
-    const levels = getPropagationRanks({ cp_links: cpLinks, peer_links: peerLinks });
-    nodes.forEach((node) => {
-      nodes.update({ ...node, level: levels[node.id] || 1 });
-    });
-
-    // Dismiss modal
-    showRenameASModal = false;
-
-    // Should I change selectedASN(2)?
+    // Reset variables
+    deselectAS();
+    deselectLink();
+    imageURL = '';
+    simResults = null;
   }
 </script>
 
-<!-- Add AS Modal -->
-<Dialog.Root bind:open={showModal}>
-  <Dialog.Content class="max-w-3xl left-[9%] top-[5%] translate-x-[-9%] translate-y-[-5%]">
-    <Dialog.Header>
-      <Dialog.Title>Add AS</Dialog.Title>
-      <Dialog.Description>
-        Create a new AS. Specify an AS's policy and role (i.e., victim or attacker) as well as its
-        relationships to other ASes in the graph.
-      </Dialog.Description>
-    </Dialog.Header>
-    <div>
-      <div class="grid gap-4 py-4">
-        <div class="grid grid-cols-5 items-center gap-4">
-          <Label class="text-right">AS Number</Label>
-          <Input bind:value={newNodeId} class="col-span-4" type="number" />
-        </div>
+<!-- Action Buttons -->
+<div class="flex flex-row space-x-2 overflow-scroll">
+  <Button
+    class="bg-emerald-500 hover:bg-emerald-500/90"
+    size="sm"
+    on:click={() => (showAddASModal = true)}>
+    <!-- <Plus class="mr-2 h-4 w-4" /> -->
+    Add AS
+  </Button>
 
-        <div class="grid grid-cols-5 items-center gap-4">
-          <Label class="text-right">Policy</Label>
-          <select
-            bind:value={newASPolicy}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="bgp">BGP</option>
-            <option value="rov">ROV</option>
-            <option value="aspa">ASPA</option>
-            <option value="bgpsec">BGPSec</option>
-            <option value="otc">Only to Customers</option>
-            <option value="pathend">Pathend</option>
-          </select>
-        </div>
-
-        <div class="grid grid-cols-5 items-center gap-4">
-          <Label class="text-right">Role</Label>
-          <select
-            bind:value={newASRole}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="">None</option>
-            <option value="attacker">Attacker</option>
-            <option value="victim">Victim</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-3 gap-2 mt-4">
-        <!-- Providers Column -->
-        <div class="border p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-md font-medium">Providers</h2>
-            <Button
-              size="icon"
-              variant="outline"
-              class="size-7"
-              on:click={() => (newASProviders = [...newASProviders, null])}>
-              <Plus class="size-4" />
-            </Button>
-          </div>
-          <div class="space-y-2">
-            {#each newASProviders as provider, index}
-              <div class="grid grid-cols-4 gap-2">
-                <select
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASProviders[index]}>
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(newASProviders, index) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  class="col-span-1"
-                  on:click={() => {
-                    newASProviders.splice(index, 1);
-                    newASProviders = newASProviders;
-                  }}>
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        <!-- Customers Column -->
-        <div class="border p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-md font-medium">Customers</h2>
-            <Button
-              size="icon"
-              variant="outline"
-              class="size-7"
-              on:click={() => (newASCustomers = [...newASCustomers, null])}>
-              <Plus class="size-4" />
-            </Button>
-          </div>
-          <div class="space-y-2">
-            {#each newASCustomers as customer, index}
-              <div class="grid grid-cols-4 gap-2">
-                <select
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASCustomers[index]}>
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(newASCustomers, index) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  class="col-span-1"
-                  on:click={() => {
-                    newASCustomers.splice(index, 1);
-                    newASCustomers = newASCustomers;
-                  }}>
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            {/each}
-          </div>
-        </div>
-        <!-- <Card.Root>
-          <Card.Header>
-            <Card.Title>Customers</Card.Title>
-          </Card.Header>
-          <Card.Content>Test</Card.Content>
-        </Card.Root> -->
-
-        <!-- Peers Column -->
-        <div class="border p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-md font-medium">Peers</h2>
-            <Button
-              size="icon"
-              variant="outline"
-              class="size-7"
-              on:click={() => (newASPeers = [...newASPeers, null])}>
-              <Plus class="size-4" />
-            </Button>
-          </div>
-          <div class="space-y-2">
-            {#each newASPeers as peer, index}
-              <div class="grid grid-cols-4 gap-2">
-                <select
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-                  bind:value={newASPeers[index]}>
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(newASPeers, index) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  class="col-span-1"
-                  on:click={() => {
-                    newASPeers.splice(index, 1);
-                    newASPeers = newASPeers;
-                  }}>
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <Dialog.Footer>
-      <Button on:click={addNode} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
-
-<!-- Clear Graph Confirmation Modal -->
-<AlertDialog.Root bind:open={showClearGraphModal}>
-  <AlertDialog.Content>
-    <AlertDialog.Header>
-      <AlertDialog.Title>Are you sure?</AlertDialog.Title>
-      <AlertDialog.Description>
-        Clearing the graph will remove all ASes and links. This cannot be undone.
-      </AlertDialog.Description>
-    </AlertDialog.Header>
-    <AlertDialog.Footer>
-      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-      <AlertDialog.Action on:click={clearGraph} class="bg-destructive hover:bg-destructive/90">
-        Continue
-      </AlertDialog.Action>
-    </AlertDialog.Footer>
-  </AlertDialog.Content>
-</AlertDialog.Root>
-
-<!-- Add Link Modal -->
-<Dialog.Root bind:open={showAddEdgeModal}>
-  <Dialog.Content>
-    <Dialog.Header>
-      <Dialog.Title>Add Link</Dialog.Title>
-      <Dialog.Description>
-        Links can also be created by selecting the type in the toolbar and dragging a connection
-        between two nodes.
-      </Dialog.Description>
-    </Dialog.Header>
-
-    <Tabs.Root bind:value={edgeType} class="w-full">
-      <Tabs.List class="grid w-full grid-cols-2">
-        <Tabs.Trigger value="cp">Customer-Provider</Tabs.Trigger>
-        <Tabs.Trigger value="peer">Peer-to-Peer</Tabs.Trigger>
-      </Tabs.List>
-
-      <Tabs.Content value="cp">
-        <div class="grid grid-cols-2 gap-2">
-          <Input type="number" bind:value={newEdgeFrom} placeholder="From ASN" class="col-span-1" />
-          <Input type="number" bind:value={newEdgeTo} placeholder="To ASN" />
-        </div>
-      </Tabs.Content>
-
-      <Tabs.Content value="peer">
-        <div class="grid grid-cols-2 gap-2">
-          <Input type="number" bind:value={newPeer1} placeholder="First Peer" class="col-span-1" />
-          <Input type="number" bind:value={newPeer2} placeholder="Second Peer" />
-        </div>
-      </Tabs.Content>
-    </Tabs.Root>
-
-    <Dialog.Footer>
-      <Button on:click={addEdge} class="bg-emerald-500 hover:bg-emerald-500">Add</Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
-
-<!-- Change AS Number Modal -->
-<Dialog.Root bind:open={showRenameASModal}>
-  <Dialog.Content>
-    <Dialog.Header>
-      <Dialog.Title>Rename AS {selectedASN2}</Dialog.Title>
-    </Dialog.Header>
-
-    <div class="grid grid-cols-5 items-center gap-4">
-      <Label class="text-right">AS Number</Label>
-      <Input bind:value={renamedASN} class="col-span-4" type="number" />
-    </div>
-
-    <Dialog.Footer>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
       <Button
-        on:click={() => {
-          renameAS(selectedASN2, Number(renamedASN));
-        }}>Change ASN</Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+        on:click={addCPLink}
+        class={drawingCPLink
+          ? 'bg-emerald-300 hover:bg-emerald-300/90'
+          : 'bg-emerald-500 hover:bg-emerald-500/90'}
+        size="sm">
+        Draw Customer-Provider Link
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Create a link by dragging mouse from a provider AS to customer AS</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
-<!-- <Modal bind:showModal={showAddEdgeModal} on:close={() => (showAddEdgeModal = false)}>
-  <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Connection</div>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button
+        on:click={addPeerLink}
+        class={drawingPeerLink
+          ? 'bg-emerald-300 hover:bg-emerald-300/90'
+          : 'bg-emerald-500 hover:bg-emerald-500/90'}
+        size="sm">
+        Draw Peer Link
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Create a link by dragging mouse from a peer AS to another</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
-  <ul class="flex flex-wrap text-sm font-medium text-center text-gray-500 border-b border-gray-200">
-    <li class="me-2">
-      <a
-        href="#"
-        class="inline-block p-4 rounded-t-lg {edgeType === 'customer-provider'
-          ? 'text-blue-600 bg-gray-50'
-          : 'hover:text-gray-600 hover:bg-gray-50'}"
-        on:click|preventDefault={() => (edgeType = 'customer-provider')}>Customer-Provider</a
-      >
-    </li>
-    <li class="me-2">
-      <a
-        href="#"
-        class="inline-block p-4 rounded-t-lg {edgeType === 'peer'
-          ? 'text-blue-600 bg-gray-50'
-          : 'hover:text-gray-600 hover:bg-gray-50'}"
-        on:click|preventDefault={() => (edgeType = 'peer')}>Peer</a
-      >
-    </li>
-  </ul>
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <!-- Clear Graph -->
+      <Button variant="destructive" size="sm" on:click={() => (showClearGraphModal = true)}>
+        <Ban class="size-4" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Clear the graph</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
 
-  {#if edgeType === 'customer-provider'}
-    <input
-      type="number"
-      bind:value={newEdgeFrom}
-      placeholder="From ASN"
-      class="p-1 border border-gray-300 rounded"
-    />
-    <input
-      type="number"
-      bind:value={newEdgeTo}
-      placeholder="To ASN"
-      class="p-1 border border-gray-300 rounded"
-    />
-  {:else if edgeType === 'peer'}
-    <input
-      type="number"
-      bind:value={newPeer1}
-      placeholder="First Peer"
-      class="p-1 border border-gray-300 rounded"
-    />
-    <input
-      type="number"
-      bind:value={newPeer2}
-      placeholder="Second Peer"
-      class="p-1 border border-gray-300 rounded"
-    />
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button variant="outline" size="sm" on:click={zoomIn}>
+        <ZoomIn class="size-5" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Zoom in</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
+
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button variant="outline" size="sm" on:click={zoomOut}>
+        <ZoomOut class="size-5" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Zoom out</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
+
+  <Tooltip.Root>
+    <Tooltip.Trigger>
+      <Button variant="outline" size="sm" on:click={centerGraph}>
+        <Fullscreen class="size-5" />
+      </Button>
+    </Tooltip.Trigger>
+    <Tooltip.Content>
+      <p>Center graph</p>
+    </Tooltip.Content>
+  </Tooltip.Root>
+
+  {#if simResults}
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <!-- Legend -->
+        <Button
+          variant="outline"
+          size="sm"
+          on:click={() => {
+            showLegend = !showLegend;
+          }}>
+          <Info class="size-5" />
+        </Button>
+        {#if showLegend}
+          <div
+            transition:flyAndScale
+            class="z-50 w-80 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none absolute -translate-x-[85%] select-text cursor-auto">
+            <table class="text-center">
+              <tr class="border-0">
+                <td>(For most specific prefix only)</td>
+              </tr>
+              <tr>
+                <td class="bg-gradient-to-r from-orange-500 to-white border border-black">
+                  &#128520; ATTACKER SUCCESS &#128520;
+                </td>
+                <td class="px-4 border border-black">{countByValue(simResults.outcome, 0)}</td>
+              </tr>
+              <tr>
+                <td class="bg-gradient-to-r from-green-400 to-white border border-black">
+                  &#128519; VICTIM SUCCESS &#128519;
+                </td>
+                <td class="px-4 border border-black">{countByValue(simResults.outcome, 1)}</td>
+              </tr>
+              <tr>
+                <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
+                  &#10041; DISCONNECTED &#10041;
+                </td>
+                <td class="px-4 border border-black">{countByValue(simResults.outcome, 2)}</td>
+              </tr>
+            </table>
+          </div>
+        {/if}
+      </Tooltip.Trigger>
+      <Tooltip.Content>
+        <p>Simulation results legend</p>
+      </Tooltip.Content>
+    </Tooltip.Root>
   {/if}
+</div>
 
-  <button on:click={addEdge} class="bg-emerald-500 text-white p-2 rounded">Add</button>
-</Modal> -->
-
-<!-- <Modal bind:showModal={showConfirmAddEdgeModal} on:close={() => (showConfirmAddEdgeModal = false)}>
-  <div slot="header" class="text-sm font-medium leading-6 mb-2">Add Edge</div>
-  <label>
-    <input type="radio" value="customer-provider" bind:group={edgeType} />
-    Customer-Provider
-  </label>
-  <label>
-    <input type="radio" value="peer" bind:group={edgeType} />
-    Peer-Peer
-  </label>
-  <button on:click={addEdge2} class="bg-emerald-500 text-white p-2 rounded">Save</button>
-</Modal> -->
-
-<h2 class="text-sm font-medium leading-6 mb-2">Graph</h2>
-
-<!-- Action Button -->
-{#if !USE_FILE_MENU}
-  <div class="flex space-x-2">
-    <Button
-      on:click={() => (showModal = true)}
-      class="bg-emerald-500 hover:bg-emerald-500/90"
-      size="sm">
-      <!-- <Plus class="mr-2 h-4 w-4" /> -->
-      Add AS
-    </Button>
-    <Button
-      on:click={addCPLink}
-      class={addingCPLink
-        ? 'bg-emerald-400 hover:bg-emerald-400/90'
-        : 'bg-emerald-500 hover:bg-emerald-500/90'}
-      size="sm">
-      <!-- <Plus class="mr-2 h-4 w-4" /> -->
-      Add Customer-Provider Link
-    </Button>
-    <Button
-      on:click={addPeerLink}
-      class={addingPeerLink
-        ? 'bg-emerald-400 hover:bg-emerald-400/90'
-        : 'bg-emerald-500 hover:bg-emerald-500/90'}
-      size="sm">
-      <!-- <Plus class="mr-2 h-4 w-4" /> -->
-      Add Peer Link
-    </Button>
-
-    <Button on:click={() => (showClearGraphModal = true)} variant="destructive" size="sm">
-      <Ban class="mr-2 size-4" />
-      Clear Graph
-    </Button>
-
-    {#if simulationResults}
-      <!-- Legend -->
-      <Popover.Root open={showLegend}>
-        <Popover.Trigger>
-          <Button variant="outline" size="sm">
-            <Info class="size-5" />
-          </Button>
-        </Popover.Trigger>
-        <Popover.Content class="w-80">
-          <table class="text-center">
-            <tr class="border-0">
-              <td>(For most specific prefix only)</td>
-            </tr>
-            <tr>
-              <td class="bg-gradient-to-r from-red-500 to-white border border-black">
-                &#128520; ATTACKER SUCCESS &#128520;
-              </td>
-              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 0)}</td>
-            </tr>
-            <tr>
-              <td class="bg-gradient-to-r from-green-400 to-white border border-black">
-                &#128519; VICTIM SUCCESS &#128519;
-              </td>
-              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 1)}</td>
-            </tr>
-            <tr>
-              <td class="bg-gradient-to-r from-gray-400 to-white border border-black">
-                &#10041; DISCONNECTED &#10041;
-              </td>
-              <td class="px-4 border border-black">{countByValue(simulationResults.outcome, 2)}</td>
-            </tr>
-          </table>
-        </Popover.Content>
-      </Popover.Root>
-    {/if}
-  </div>
-{/if}
+<!-- Hidden canvas for calculating max radius -->
+<canvas bind:this={canvas} hidden></canvas>
 
 <!-- Graph -->
-<div bind:this={container} class="mt-2 w-full h-[calc(100vh-205px)] overflow-auto"></div>
+<div
+  bind:this={container}
+  class={`mt-2 w-full h-[75vh] overflow-auto ${
+    drawingCPLink || drawingPeerLink ? 'cursor-crosshair' : 'cursor-auto'
+  } ${hoveredASN !== null || hoveredLink !== null ? 'cursor-pointer' : 'cursor-auto'}`}>
+</div>
 
-{#if selectedASN !== null}
-  <!-- Level:
-      <input
-        type="number"
-        bind:value={selectedASLevel}
-        class="p-1 border border-gray-300 rounded"
-        min="1"
-        on:keydown={() => false}
-      />
-    </p>-->
-  <Card.Root class="mx-auto w-full">
-    <Card.Header>
-      <Card.Title>Selected AS: {selectedASN}</Card.Title>
-    </Card.Header>
+<!-- Add AS Modal -->
+<AddASModal
+  bind:showModal={showAddASModal}
+  {nodes}
+  {edges}
+  bind:config
+  {refreshSelectedAS}
+  {centerGraph} />
 
-    <Card.Content>
-      <div class="grid gap-4">
-        <!-- <div class="grid grid-cols-5 items-center gap-4">
-          <Label class="text-right">AS Number</Label>
-          <Input value={selectedASN} on:change={updateASN} class="col-span-4" type="number" />
-        </div> -->
+<!-- Clear Graph Confirmation Modal -->
+<ClearGraphModal bind:showModal={showClearGraphModal} onClear={clearGraph} />
 
-        <div class="grid grid-cols-5 items-center gap-4">
-          <Label class="text-right">Policy</Label>
-          <select
-            bind:value={selectedASPolicy}
-            on:change={updateASPolicy}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="bgp">BGP</option>
-            <option value="rov">ROV</option>
-            <option value="aspa">ASPA</option>
-            <option value="bgpsec">BGPSec</option>
-            <option value="otc">Only to Customers</option>
-            <option value="pathend">Pathend</option>
-          </select>
-        </div>
+<!-- Add Link Modal -->
+<AddLinkModal bind:showModal={showAddLinkModal} {nodes} {edges} bind:config {refreshSelectedAS} />
 
-        <div class="grid grid-cols-5 items-center gap-4">
-          <Label class="text-right">Role</Label>
-          <select
-            bind:value={selectedASRole}
-            on:change={updateASRole}
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-4">
-            <option value="">None</option>
-            <option value="attacker">Attacker</option>
-            <option value="victim">Victim</option>
-          </select>
-        </div>
-      </div>
+<!-- Change AS Number Modal -->
+<RenameASModal
+  bind:showModal={showRenameASModal}
+  {nodes}
+  {edges}
+  bind:config
+  bind:oldASN={contextMenuASN} />
 
-      <!-- {#each newASCustomers as customer, index}
-        <div class="grid grid-cols-4 gap-2">
-          <select
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3"
-            bind:value={newASCustomers[index]}
-          >
-            <option value={null}>Select an AS</option>
-            {#each availableNodes(newASCustomers, index) as node}
-              <option value={node.id}>{node.label || node.id}</option>
-            {/each}
-          </select>
+<!-- Show details when a node is selected -->
+<ASDetailsCard
+  bind:selectedASN
+  bind:selectedASPolicy
+  bind:selectedASRole
+  bind:selectedASLevel
+  bind:selectedASProviders
+  bind:selectedASCustomers
+  bind:selectedASPeers
+  {nodes}
+  {edges}
+  bind:config
+  {centerGraph} />
 
-          <Button
-            size="icon"
-            variant="outline"
-            class="col-span-1"
-            on:click={() => {
-              newASCustomers.splice(index, 1);
-              newASCustomers = newASCustomers;
-            }}
-          >
-            <Trash2 class="size-4" />
-          </Button>
-        </div>
-      {/each} -->
+<!-- Show details when a link is selected -->
+<LinkDetailsCard bind:selectedLinkID bind:selectedLink {nodes} {edges} bind:config />
 
-      <div class="grid grid-cols-3 gap-2 mt-4">
-        <!-- Providers Column -->
-        <div class="border p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-md font-medium">Providers</h2>
-            <Button
-              size="icon"
-              variant="outline"
-              class="size-7"
-              on:click={() =>
-                (selectedASRelationships.providers = [...selectedASRelationships.providers, null])}>
-              <Plus class="size-4" />
-            </Button>
-          </div>
-          <div class="space-y-2">
-            {#each selectedASRelationships.providers as provider, index}
-              <div class="grid grid-cols-4 gap-2">
-                <select
-                  value={selectedASRelationships.providers[index]}
-                  on:change={(e) =>
-                    updateRelationship('provider', provider, Number(e.target.value))}
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3">
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(selectedASRelationships.providers, index, Number(selectedASN)) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  class="col-span-1"
-                  on:click={() => deleteRelationship('provider', provider)}>
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        <!-- Customers Column -->
-        <div class="border p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-md font-medium">Customers</h2>
-            <Button
-              size="icon"
-              variant="outline"
-              class="size-7"
-              on:click={() =>
-                (selectedASRelationships.customers = [...selectedASRelationships.customers, null])}>
-              <Plus class="size-4" />
-            </Button>
-          </div>
-          <div class="space-y-2">
-            {#each selectedASRelationships.customers as customer, index}
-              <div class="grid grid-cols-4 gap-2">
-                <select
-                  value={selectedASRelationships.customers[index]}
-                  on:change={(e) =>
-                    updateRelationship('customer', customer, Number(e.target.value))}
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3">
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(selectedASRelationships.customers, index, Number(selectedASN)) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  class="col-span-1"
-                  on:click={() => deleteRelationship('customer', customer)}>
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            {/each}
-          </div>
-        </div>
-        <!-- <Card.Root>
-          <Card.Header>
-            <Card.Title>Customers</Card.Title>
-          </Card.Header>
-          <Card.Content>Test</Card.Content>
-        </Card.Root> -->
-
-        <!-- Peers Column -->
-        <div class="border p-4 rounded-lg">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-md font-medium">Peers</h2>
-            <Button
-              size="icon"
-              variant="outline"
-              class="size-7"
-              on:click={() =>
-                (selectedASRelationships.peers = [...selectedASRelationships.peers, null])}>
-              <Plus class="size-4" />
-            </Button>
-          </div>
-          <div class="space-y-2">
-            {#each selectedASRelationships.peers as peer, index}
-              <div class="grid grid-cols-4 gap-2">
-                <select
-                  value={selectedASRelationships.peers[index]}
-                  on:change={(e) => updateRelationship('peer', peer, Number(e.target.value))}
-                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 col-span-3">
-                  <option value={null}>Select an AS</option>
-                  {#each availableNodes(selectedASRelationships.peers, index, Number(selectedASN)) as node}
-                    <option value={node.id}>{node.label || node.id}</option>
-                  {/each}
-                </select>
-
-                <Button
-                  size="icon"
-                  variant="outline"
-                  class="col-span-1"
-                  on:click={() => deleteRelationship('peer', peer)}>
-                  <Trash2 class="size-4" />
-                </Button>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-    </Card.Content>
-
-    <Card.Footer>
-      <Button on:click={deleteNode} variant="destructive">Delete AS</Button>
-    </Card.Footer>
-  </Card.Root>
-{/if}
-
-{#if selectedLinkID !== null}
-  <Card.Root class="mx-auto w-full">
-    <Card.Header>
-      <Card.Title
-        >Selected Link: {selectedLink.from}
-        to {selectedLink.to}</Card.Title>
-      <Card.Description
-        >{edges.get(selectedLinkID).dashes ? 'Peer' : 'Customer-Provider'} Link</Card.Description>
-    </Card.Header>
-    <Card.Footer class="space-x-2">
-      {#if edges.get(selectedLinkID).dashes}
-        <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline"
-          >Switch to CP Link</Button>
-      {:else}
-        <Button on:click={() => handleContextMenuAction('swapCP2')} variant="outline"
-          >Swap Customer and Provider</Button>
-        <Button on:click={() => handleContextMenuAction('switchEdge2')} variant="outline"
-          >Switch to Peer Link</Button>
-      {/if}
-
-      <Button on:click={deleteEdge} variant="destructive">Delete Link</Button>
-    </Card.Footer>
-  </Card.Root>
-{/if}
-
-<!-- {#if nodeData}
-  <div class="tooltip" style="left: {nodeData.x}px; top: {nodeData.y}px;">
-    <p class="mb-2">{nodeData.policy.toUpperCase()}</p>
-    {#if simulationResults !== null && simulationResults.local_ribs[nodeData.id]}
-      {#if simulationResults.local_ribs[nodeData.id].length > 0}
-        <table border="0" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">
-          <tr>
-            <td colspan="4">Local RIB</td>
-          </tr>
-          {#each simulationResults.local_ribs[nodeData.id] as { type, mask, as_path }}
-            <tr>
-              <td>{mask}</td>
-              <td>{as_path.join(', ')}</td>
-              <td>
-                {#if type === 'victim'}
-                  &#128519;
-                {:else if type === 'attacker'}
-                  &#128520;
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </table>
-      {:else}
-        <p>Disconnected</p>
-      {/if}
-    {/if}
-  </div>
-{/if} -->
-
-{#if contextMenuData.show}
-  <div
-    transition:flyAndScale
-    class="z-50 min-w-[8rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md focus:outline-none absolute"
-    style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
-    {#if selectedASN2 !== null}
-      <button
-        class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-        on:click={() => {
-          renamedASN = selectedASN2;
-          showRenameASModal = true;
-          contextMenuData.show = false;
-        }}>
-        <Pencil class="size-4 mr-2" />
-        Change AS Number
-      </button>
-      <button
-        class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-        on:click={() => handleContextMenuAction('deleteNode')}>
-        <Trash2 class="size-4 mr-2" />
-        Delete AS
-      </button>
-    {:else if selectedLinkID2 !== null}
-      {#if edges.get(selectedLinkID2).dashes}
-        <button
-          class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-          on:click={() => handleContextMenuAction('switchEdge')}>
-          <ArrowLeftRight class="size-4 mr-2" />
-          Switch to CP Link
-        </button>
-      {:else}
-        <button
-          class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-          on:click={() => handleContextMenuAction('switchEdge')}>
-          <ArrowLeftRight class="size-4 mr-2" />
-          Switch to Peer Link
-        </button>
-        <button
-          class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-          on:click={() => handleContextMenuAction('swapCP')}>
-          <ArrowLeftRight class="size-4 mr-2" />
-          Swap Customer and Provider
-        </button>
-      {/if}
-      <button
-        class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-        on:click={() => handleContextMenuAction('deleteEdge')}>
-        <Trash2 class="size-4 mr-2" />
-        Delete Link
-      </button>
-    {:else}
-      <button
-        class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-        on:click={() => {
-          showModal = true;
-          contextMenuData.show = false;
-        }}>
-        Add AS
-      </button>
-      <button
-        class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 w-full"
-        on:click={() => {
-          showAddEdgeModal = true;
-          contextMenuData.show = false;
-        }}>
-        Add Link
-      </button>
-    {/if}
-  </div>
-  <!-- <div class="context-menu" style="left: {contextMenuData.x}px; top: {contextMenuData.y}px;">
-    <ul>
-      {#if selectedASN2 !== null}
-        <li
-          on:click={() => {
-            renamedASN = selectedASN2;
-            showRenameASModal = true;
-            contextMenuData.show = false;
-          }}
-        >
-          Change AS Number
-        </li>
-        <li on:click={() => handleContextMenuAction('deleteNode')}>Delete AS</li>
-      {:else if selectedLinkID2 !== null}
-        {#if edges.get(selectedLinkID2).dashes}
-          <li on:click={() => handleContextMenuAction('switchEdge')}>Switch to CP Link</li>
-        {:else}
-          <li on:click={() => handleContextMenuAction('swapCP')}>Swap Customer and Provider</li>
-          <li on:click={() => handleContextMenuAction('switchEdge')}>Switch to P2P Link</li>
-        {/if}
-        <li on:click={() => handleContextMenuAction('deleteEdge')}>Delete Link</li>
-      {:else}
-        <li
-          on:click={() => {
-            showModal = true;
-            contextMenuData.show = false;
-          }}
-        >
-          Add AS
-        </li>
-        <li
-          on:click={() => {
-            showAddEdgeModal = true;
-            contextMenuData.show = false;
-          }}
-        >
-          Add Link
-        </li>
-      {/if}
-    </ul>
-  </div> -->
-{/if}
-
-<!-- <ContextMenu.Root bind:open={rightClick}>
-  <ContextMenu.Trigger>Test</ContextMenu.Trigger>
-  <ContextMenu.Content>
-    {#if selectedASN2 !== null}
-      <ContextMenu.Item on:click={() => handleContextMenuAction('deleteNode')}
-        >Delete Node</ContextMenu.Item
-      >
-    {/if}
-    {#if selectedLinkID2 !== null}
-      <ContextMenu.Item on:click={() => handleContextMenuAction('deleteEdge')}
-        >Delete Edge</ContextMenu.Item
-      >
-    {/if}
-  </ContextMenu.Content>
-</ContextMenu.Root> -->
-
-<style>
-</style>
+<!-- Show custom context menu when right clicking on the graph -->
+<GraphContextMenu
+  bind:showMenu={showContextMenu}
+  bind:x={contextMenuX}
+  bind:y={contextMenuY}
+  bind:contextASN={contextMenuASN}
+  bind:contextLink={contextMenuLink}
+  {nodes}
+  {edges}
+  bind:config
+  onRename={() => (showRenameASModal = true)}
+  onAddAS={() => (showAddASModal = true)}
+  onAddLink={() => (showAddLinkModal = true)}
+  {refreshSelectedAS}
+  {deselectAS}
+  {deselectLink} />

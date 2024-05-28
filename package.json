@@ -35,12 +35,15 @@
   "type": "module",
   "dependencies": {
     "@viz-js/viz": "^3.2.4",
-    "bits-ui": "^0.18.4",
+    "bits-ui": "^0.21.4",
     "clsx": "^2.1.0",
     "d3-dag": "^1.1.0",
     "gojs": "^2.3.13",
+    "ipaddr.js": "^2.1.0",
     "lucide-svelte": "^0.343.0",
+    "mode-watcher": "^0.3.0",
     "preline": "^2.0.3",
+    "svelte-sonner": "^0.3.22",
     "tailwind-merge": "^2.2.1",
     "tailwind-variants": "^0.2.0",
     "vis-network": "^9.1.9"
